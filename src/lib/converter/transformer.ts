@@ -76,9 +76,10 @@ const data = await response.json();
 
     case "ssr":
       // Rendu serveur à chaque requête, zéro JS client
+      // Note : pour activer le SSR en production, passer output: "server" dans astro.config
+      // et ajouter export const prerender = false; dans le frontmatter
       return `---
-export const prerender = false;
-
+// Mode: SSR — En production, ajouter @astrojs/node et output: "server"
 import Layout from "../layouts/Layout.astro";
 import ${componentName} from "${importPath}";
 ---

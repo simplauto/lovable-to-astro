@@ -1,6 +1,10 @@
 import { mkdtemp, readdir, readFile, rm, cp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, extname } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const exec = promisify(execFile);
 import { db } from "../db";
 import { conversions, questions, projects } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -174,6 +178,17 @@ export async function runConversion(conversionId: number): Promise<void> {
       await rm(destDir, { recursive: true, force: true }).catch(() => {});
       await mkdir(destDir, { recursive: true });
       await cp(outputDir, destDir, { recursive: true });
+
+      // 6. Build du projet Astro pour preview
+      await updateStatus(conversionId, "deploying");
+      try {
+        await exec("npm", ["install", "--ignore-scripts"], { cwd: destDir, timeout: 120_000 });
+        await exec("npx", ["astro", "build"], { cwd: destDir, timeout: 120_000 });
+      } catch (buildErr) {
+        // Le build preview peut échouer (deps manquantes, etc.)
+        // On continue quand même — les fichiers source restent consultables
+        console.error("Preview build failed (non-fatal):", buildErr instanceof Error ? buildErr.message : buildErr);
+      }
     }
 
     await updateStatus(conversionId, "done");

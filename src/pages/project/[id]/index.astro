@@ -180,12 +180,20 @@ function statusLabel(status: string) {
           </div>
           <div class="flex items-center gap-3">
             {lastConversion.status === "done" && (
-              <a
-                href={`/project/${projectId}/files`}
-                class="px-4 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 font-medium transition-colors"
-              >
-                Voir les fichiers
-              </a>
+              <>
+                <a
+                  href={`/project/${projectId}/preview`}
+                  class="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium transition-colors"
+                >
+                  Preview
+                </a>
+                <a
+                  href={`/project/${projectId}/files`}
+                  class="px-4 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 font-medium transition-colors"
+                >
+                  Fichiers
+                </a>
+              </>
             )}
           <a
             href={`/project/${projectId}/conversion/${lastConversion.id}`}

@@ -23,7 +23,6 @@ export function generateScaffold(outputDir: string, sourceDir: string): void {
         },
         dependencies: {
           astro: "^5.0.0",
-          "@astrojs/node": "^9.0.0",
           "@astrojs/react": "^4.0.0",
           react: "^19.0.0",
           "react-dom": "^19.0.0",
@@ -45,13 +44,11 @@ export function generateScaffold(outputDir: string, sourceDir: string): void {
   writeOutput(
     join(outputDir, "astro.config.mjs"),
     `import { defineConfig } from "astro/config";
-import node from "@astrojs/node";
 import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  output: "server",
-  adapter: node({ mode: "standalone" }),
+  output: "static",
   integrations: [react()],
   vite: {
     plugins: [tailwindcss()],
