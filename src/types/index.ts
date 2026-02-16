@@ -8,7 +8,7 @@ export type ConversionStatus =
   | "error"
   | "waiting_answers";
 
-export type ComponentMode = "static" | "island";
+export type ComponentMode = "static" | "static-data" | "ssr" | "island";
 
 export type HydrationDirective =
   | "client:load"

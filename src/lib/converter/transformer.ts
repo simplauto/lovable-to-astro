@@ -45,8 +45,10 @@ export function generateAstroPage(
   const componentName = componentNameFromPath(componentPath);
   const importPath = computeImportPath(astroPageRelPath, componentPath);
 
-  if (rule.mode === "static") {
-    return `---
+  switch (rule.mode) {
+    case "static":
+      // HTML pur généré au build, aucun JS côté client
+      return `---
 import Layout from "../layouts/Layout.astro";
 import ${componentName} from "${importPath}";
 ---
@@ -55,11 +57,41 @@ import ${componentName} from "${importPath}";
   <${componentName} />
 </Layout>
 `;
-  }
 
-  // Composant en îlot React
-  const directive = rule.hydrationDirective ?? "client:load";
-  return `---
+    case "static-data":
+      // Statique avec données récupérées au build (fetch dans le frontmatter)
+      return `---
+import Layout from "../layouts/Layout.astro";
+import ${componentName} from "${importPath}";
+
+// TODO: Remplacer par l'URL de votre API
+const response = await fetch("https://api.example.com/data");
+const data = await response.json();
+---
+
+<Layout title="${componentName}">
+  <${componentName} data={data} />
+</Layout>
+`;
+
+    case "ssr":
+      // Rendu serveur à chaque requête, zéro JS client
+      return `---
+export const prerender = false;
+
+import Layout from "../layouts/Layout.astro";
+import ${componentName} from "${importPath}";
+---
+
+<Layout title="${componentName}">
+  <${componentName} />
+</Layout>
+`;
+
+    case "island": {
+      // Composant en îlot React avec directive d'hydratation
+      const directive = rule.hydrationDirective ?? "client:load";
+      return `---
 import Layout from "../layouts/Layout.astro";
 import ${componentName} from "${importPath}";
 ---
@@ -68,6 +100,8 @@ import ${componentName} from "${importPath}";
   <${componentName} ${directive} />
 </Layout>
 `;
+    }
+  }
 }
 
 /**

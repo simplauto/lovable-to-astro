@@ -41,12 +41,19 @@ export const POST: APIRoute = async ({ params, request }) => {
     .set({ answer, answeredAt: now })
     .where(eq(questions.id, id));
 
-  // Créer ou mettre à jour la règle correspondante
-  const isIsland = answer.startsWith("island:");
-  const mode = isIsland ? "island" as const : "static" as const;
-  const hydrationDirective = isIsland
-    ? (answer.replace("island:", "") as "client:load" | "client:visible" | "client:idle" | "client:only")
-    : null;
+  // Déterminer le mode et la directive d'hydratation depuis la réponse
+  // Valeurs possibles : "static", "static-data", "ssr", "island:client:load", "island:client:visible"
+  let mode: "static" | "static-data" | "ssr" | "island";
+  let hydrationDirective: "client:load" | "client:visible" | "client:idle" | "client:only" | null = null;
+
+  if (answer.startsWith("island:")) {
+    mode = "island";
+    hydrationDirective = answer.replace("island:", "") as typeof hydrationDirective;
+  } else if (answer === "static-data" || answer === "ssr") {
+    mode = answer;
+  } else {
+    mode = "static";
+  }
 
   // Chercher une règle existante pour ce composant + projet
   const existingRuleConditions = projectId

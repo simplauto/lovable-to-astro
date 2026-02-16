@@ -27,7 +27,7 @@ export const rules = sqliteTable("rules", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   projectId: integer("project_id").references(() => projects.id),
   componentPath: text("component_path").notNull(),
-  mode: text("mode", { enum: ["static", "island"] }).notNull(),
+  mode: text("mode", { enum: ["static", "static-data", "ssr", "island"] }).notNull(),
   hydrationDirective: text("hydration_directive", {
     enum: ["client:load", "client:visible", "client:idle", "client:only"],
   }),

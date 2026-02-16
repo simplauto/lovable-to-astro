@@ -100,10 +100,26 @@ export async function runConversion(conversionId: number): Promise<void> {
 
       for (const { componentPath, analysis } of pendingQuestions) {
         const suggested = suggestHydrationDirective(analysis);
+        const hooksList = analysis.hooks.length > 0 ? analysis.hooks.join(", ") : "aucun";
+        const details: string[] = [];
+        if (analysis.hasHooks) details.push(`hooks: ${hooksList}`);
+        if (analysis.hasEventHandlers) details.push("gestionnaires d'événements");
+        if (analysis.usesContext) details.push("React Context");
+        if (analysis.usesRouter) details.push("routeur React");
+        const detailStr = details.length > 0 ? details.join(", ") : "composant simple";
+
+        const modeLabels: Record<string, string> = {
+          static: "Statique (HTML pur)",
+          "static-data": "Statique + données",
+          ssr: "SSR (serveur)",
+          island: `Interactif (${suggested})`,
+        };
+        const suggestionLabel = modeLabels[analysis.suggestedMode] ?? analysis.suggestedMode;
+
         await db.insert(questions).values({
           conversionId,
           componentPath,
-          questionText: `Comment convertir ${componentPath} ? Hooks détectés : ${analysis.hooks.join(", ") || "aucun"}. Suggestion : ${analysis.suggestedMode} (${suggested})`,
+          questionText: `Quel mode pour ce composant ? Détecté : ${detailStr}. Suggestion : ${suggestionLabel}.`,
           context: JSON.stringify(analysis, null, 2),
           createdAt: new Date().toISOString(),
         });
