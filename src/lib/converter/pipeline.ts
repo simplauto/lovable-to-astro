@@ -2,7 +2,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, extname } from "node:path";
 import { db } from "../db";
-import { conversions, questions } from "../db/schema";
+import { conversions, questions, projects } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { cloneSourceRepo, pushToTargetRepo } from "../github/client";
 import { deployCoolify } from "../coolify/client";
@@ -52,9 +52,28 @@ export async function runConversion(conversionId: number): Promise<void> {
   const outputDir = await mkdtemp(join(tmpdir(), "astro-out-"));
 
   try {
+    // 0. Charger le projet associé (si la conversion a un projectId)
+    const [conversion0] = await db
+      .select()
+      .from(conversions)
+      .where(eq(conversions.id, conversionId));
+
+    let sourceRepo: string | undefined;
+    let targetRepo: string | undefined;
+    if (conversion0?.projectId) {
+      const [project] = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, conversion0.projectId));
+      if (project) {
+        sourceRepo = project.sourceRepo;
+        targetRepo = project.targetRepo ?? undefined;
+      }
+    }
+
     // 1. Clone
     await updateStatus(conversionId, "analyzing");
-    await cloneSourceRepo(sourceDir);
+    await cloneSourceRepo(sourceDir, sourceRepo);
 
     // 2. Analyse des composants
     const srcDir = join(sourceDir, "src");
@@ -69,7 +88,7 @@ export async function runConversion(conversionId: number): Promise<void> {
       analyses.push(analysis);
 
       // Vérifier s'il y a une règle existante
-      const existingRule = await findRule(relativePath);
+      const existingRule = await findRule(relativePath, conversion0?.projectId ?? undefined);
       if (!existingRule && needsQuestion(analysis)) {
         pendingQuestions.push({ componentPath: relativePath, analysis });
       }
@@ -111,7 +130,7 @@ export async function runConversion(conversionId: number): Promise<void> {
 
       for (const route of routes) {
         const analysis = analyses.find((a) => a.filePath.includes(route.componentName));
-        const rule: ConversionRule = (await findRule(route.componentImport)) ?? {
+        const rule: ConversionRule = (await findRule(route.componentImport, conversion0?.projectId ?? undefined)) ?? {
           componentPath: route.componentImport,
           mode: analysis?.suggestedMode ?? "island",
           hydrationDirective: analysis?.suggestedDirective ?? "client:load",
@@ -139,6 +158,7 @@ export async function runConversion(conversionId: number): Promise<void> {
     await pushToTargetRepo(
       outputDir,
       `Convert ${conversion.commitSha.slice(0, 7)}: ${conversion.commitMessage ?? "auto-conversion"}`,
+      targetRepo,
     );
 
     // 6. Déploiement preview automatique

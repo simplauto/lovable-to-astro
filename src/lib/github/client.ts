@@ -3,30 +3,39 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 
+function getToken(): string {
+  const token = process.env.GITHUB_TOKEN ?? (import.meta as any).env?.GITHUB_TOKEN;
+  if (!token) throw new Error("GITHUB_TOKEN not set");
+  return token;
+}
+
 /**
  * Clone le repo source dans un répertoire temporaire.
- * Retourne le chemin du répertoire cloné.
+ * @param targetDir - Le répertoire où cloner
+ * @param repo - Le repo au format "owner/name" (optionnel, fallback sur env var)
  */
-export async function cloneSourceRepo(targetDir: string): Promise<void> {
-  const repo = process.env.GITHUB_SOURCE_REPO;
-  const token = process.env.GITHUB_TOKEN;
-  if (!repo || !token) throw new Error("GITHUB_SOURCE_REPO or GITHUB_TOKEN not set");
+export async function cloneSourceRepo(targetDir: string, repo?: string): Promise<void> {
+  const repoName = repo ?? process.env.GITHUB_SOURCE_REPO;
+  if (!repoName) throw new Error("No source repo specified");
+  const token = getToken();
 
-  const url = `https://x-access-token:${token}@github.com/${repo}.git`;
+  const url = `https://x-access-token:${token}@github.com/${repoName}.git`;
   await exec("git", ["clone", "--depth", "1", url, targetDir]);
 }
 
 /**
  * Pousse le code Astro généré vers le repo cible.
+ * @param sourceDir - Le répertoire contenant le code généré
+ * @param commitMessage - Le message de commit
+ * @param repo - Le repo au format "owner/name" (optionnel, fallback sur env var)
  */
-export async function pushToTargetRepo(sourceDir: string, commitMessage: string): Promise<void> {
-  const repo = process.env.GITHUB_TARGET_REPO;
-  const token = process.env.GITHUB_TOKEN;
-  if (!repo || !token) throw new Error("GITHUB_TARGET_REPO or GITHUB_TOKEN not set");
+export async function pushToTargetRepo(sourceDir: string, commitMessage: string, repo?: string): Promise<void> {
+  const repoName = repo ?? process.env.GITHUB_TARGET_REPO;
+  if (!repoName) throw new Error("No target repo specified");
+  const token = getToken();
 
-  const url = `https://x-access-token:${token}@github.com/${repo}.git`;
+  const url = `https://x-access-token:${token}@github.com/${repoName}.git`;
 
-  // Init + commit + push
   await exec("git", ["init"], { cwd: sourceDir });
   await exec("git", ["checkout", "-b", "main"], { cwd: sourceDir });
   await exec("git", ["add", "."], { cwd: sourceDir });
