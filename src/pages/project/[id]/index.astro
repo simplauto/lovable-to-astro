@@ -39,15 +39,25 @@ const lastConversion = recentConversions[0];
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     pending: "En file d'attente",
-    analyzing: "Analyse en cours...",
-    converting: "Conversion en cours...",
-    pushing: "Publication du code...",
-    deploying: "Déploiement preview...",
+    analyzing: "1/4 — Clone et analyse des composants React...",
+    converting: "2/4 — Conversion en pages Astro...",
+    pushing: "3/4 — Sauvegarde des fichiers...",
+    deploying: "4/4 — Build de la preview (npm install + astro build)...",
     done: "Terminé",
     error: "Erreur",
     waiting_answers: "En attente de vos réponses",
   };
   return map[status] ?? status;
+}
+
+function elapsedTime(startedAt: string): string {
+  const start = new Date(startedAt).getTime();
+  const now = Date.now();
+  const seconds = Math.floor((now - start) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${minutes}min ${secs}s`;
 }
 ---
 
@@ -71,11 +81,41 @@ function statusLabel(status: string) {
 
     <!-- Bannière de statut si conversion en cours -->
     {runningConversion && (
-      <div class="rounded-lg border border-blue-200 bg-blue-50 p-4 flex items-center gap-3">
-        <div class="animate-spin rounded-full h-5 w-5 border-2 border-blue-600 border-t-transparent"></div>
-        <div>
-          <p class="text-sm font-medium text-blue-900">{statusLabel(runningConversion.status)}</p>
-          <p class="text-xs text-blue-700 mt-0.5">L'outil analyse et convertit votre projet Lovable en Astro.</p>
+      <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="animate-spin rounded-full h-5 w-5 border-2 border-blue-600 border-t-transparent"></div>
+            <div>
+              <p class="text-sm font-medium text-blue-900">{statusLabel(runningConversion.status)}</p>
+              <p class="text-xs text-blue-700 mt-0.5">
+                Démarré il y a {elapsedTime(runningConversion.startedAt)} — Rafraîchissement auto toutes les 5s
+              </p>
+            </div>
+          </div>
+          <button
+            id="cancel-btn"
+            data-conversion-id={runningConversion.id}
+            class="px-3 py-1.5 text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded-md font-medium transition-colors"
+          >
+            Annuler
+          </button>
+        </div>
+        <!-- Barre de progression -->
+        <div class="mt-3 flex gap-1">
+          {["analyzing", "converting", "pushing", "deploying"].map((step, i) => {
+            const steps = ["analyzing", "converting", "pushing", "deploying"];
+            const currentIdx = steps.indexOf(runningConversion.status);
+            const isDone = i < currentIdx;
+            const isCurrent = i === currentIdx;
+            return (
+              <div class:list={[
+                "h-1.5 flex-1 rounded-full transition-all",
+                isDone && "bg-blue-500",
+                isCurrent && "bg-blue-400 animate-pulse",
+                !isDone && !isCurrent && "bg-blue-200",
+              ]} />
+            );
+          })}
         </div>
       </div>
     )}
@@ -276,6 +316,24 @@ function statusLabel(status: string) {
           alert("Erreur réseau");
           convertBtn.disabled = false;
           convertBtn.textContent = "Lancer la conversion";
+        }
+      });
+    }
+
+    // Bouton annuler
+    const cancelBtn = document.getElementById("cancel-btn") as HTMLButtonElement | null;
+    if (cancelBtn) {
+      const conversionId = cancelBtn.dataset.conversionId;
+      cancelBtn.addEventListener("click", async () => {
+        cancelBtn.disabled = true;
+        cancelBtn.textContent = "Annulation...";
+        try {
+          await fetch(`/api/conversions/${conversionId}/cancel`, { method: "POST" });
+          window.location.reload();
+        } catch {
+          alert("Erreur lors de l'annulation");
+          cancelBtn.disabled = false;
+          cancelBtn.textContent = "Annuler";
         }
       });
     }
