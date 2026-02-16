@@ -4,6 +4,7 @@ import { db } from "./db";
 import { users, sessions } from "./db/schema";
 import { eq, and, gt } from "drizzle-orm";
 
+const ALLOWED_DOMAINS = ["simplauto.com", "naeka.fr"];
 const SESSION_COOKIE = "session";
 const SESSION_TTL_DAYS = 7;
 
@@ -11,6 +12,13 @@ function getSessionSecret(): string {
   const secret = process.env.SESSION_SECRET ?? import.meta.env.SESSION_SECRET;
   if (!secret) throw new Error("SESSION_SECRET is not set");
   return secret;
+}
+
+// --- Domain check ---
+
+export function isAllowedDomain(email: string): boolean {
+  const domain = email.split("@")[1]?.toLowerCase();
+  return !!domain && ALLOWED_DOMAINS.includes(domain);
 }
 
 // --- Password ---

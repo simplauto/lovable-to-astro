@@ -52,3 +52,12 @@ export const sessions = sqliteTable("sessions", {
   expiresAt: text("expires_at").notNull(),
   createdAt: text("created_at").notNull(),
 });
+
+export const passwordResets = sqliteTable("password_resets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  token: text("token").notNull().unique(),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  createdAt: text("created_at").notNull(),
+});

@@ -20,6 +20,7 @@
     "@babel/parser": "^7.29.0",
     "@babel/traverse": "^7.29.0",
     "@babel/types": "^7.29.0",
+    "@getbrevo/brevo": "^3.0.1",
     "@octokit/rest": "^22.0.1",
     "@tailwindcss/vite": "^4.1.18",
     "@types/react": "^19.2.14",
