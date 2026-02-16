@@ -25,6 +25,14 @@ export const POST: APIRoute = async ({ params, request }) => {
     return new Response("Question not found", { status: 404 });
   }
 
+  // Récupérer le projectId depuis la conversion associée
+  const [conversion] = await db
+    .select()
+    .from(conversions)
+    .where(eq(conversions.id, question.conversionId));
+
+  const projectId = conversion?.projectId ?? null;
+
   const now = new Date().toISOString();
 
   // Mettre à jour la question
@@ -40,19 +48,31 @@ export const POST: APIRoute = async ({ params, request }) => {
     ? (answer.replace("island:", "") as "client:load" | "client:visible" | "client:idle" | "client:only")
     : null;
 
-  await db
-    .insert(rules)
-    .values({
+  // Chercher une règle existante pour ce composant + projet
+  const existingRuleConditions = projectId
+    ? and(eq(rules.componentPath, question.componentPath), eq(rules.projectId, projectId))
+    : and(eq(rules.componentPath, question.componentPath), isNull(rules.projectId));
+
+  const [existingRule] = await db
+    .select()
+    .from(rules)
+    .where(existingRuleConditions);
+
+  if (existingRule) {
+    await db
+      .update(rules)
+      .set({ mode, hydrationDirective, updatedAt: now })
+      .where(eq(rules.id, existingRule.id));
+  } else {
+    await db.insert(rules).values({
+      projectId,
       componentPath: question.componentPath,
       mode,
       hydrationDirective,
       createdAt: now,
       updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: rules.componentPath,
-      set: { mode, hydrationDirective, updatedAt: now },
     });
+  }
 
   // Vérifier s'il reste des questions non répondues pour cette conversion
   const remaining = await db
@@ -66,22 +86,16 @@ export const POST: APIRoute = async ({ params, request }) => {
     );
 
   // Si toutes les questions sont répondues, relancer la conversion
-  if (remaining.length === 0) {
-    const [conversion] = await db
-      .select()
-      .from(conversions)
-      .where(eq(conversions.id, question.conversionId));
-
-    if (conversion && conversion.status === "waiting_answers") {
-      runConversion(conversion.id).catch((err) => {
-        console.error(`Conversion ${conversion.id} resume failed:`, err);
-      });
-    }
+  if (remaining.length === 0 && conversion && conversion.status === "waiting_answers") {
+    runConversion(conversion.id).catch((err) => {
+      console.error(`Conversion ${conversion.id} resume failed:`, err);
+    });
   }
 
-  // Rediriger vers la file d'attente
+  // Rediriger vers le dashboard du projet
+  const redirectUrl = projectId ? `/project/${projectId}` : "/";
   return new Response(null, {
     status: 302,
-    headers: { Location: "/queue" },
+    headers: { Location: redirectUrl },
   });
 };
