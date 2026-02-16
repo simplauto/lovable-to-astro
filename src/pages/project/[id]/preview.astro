@@ -3,6 +3,8 @@ import Dashboard from "../../../layouts/Dashboard.astro";
 import { db } from "../../../lib/db";
 import { projects, conversions } from "../../../lib/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { existsSync, readFileSync } from "node:fs";
+import { projectOutputDir } from "../../../lib/converter/pipeline";
 
 const projectId = Number(Astro.params.id);
 if (isNaN(projectId)) return Astro.redirect("/");
@@ -19,10 +21,21 @@ const [lastDone] = await db
 
 const hasConversion = lastDone?.status === "done";
 const previewUrl = `/api/projects/${projectId}/preview/`;
+
+// Vérifier si le build a réussi (dist/ existe)
+const outputDir = projectOutputDir(projectId);
+const distExists = existsSync(`${outputDir}/dist`);
+const buildLogPath = `${outputDir}/build.log`;
+let buildLog = "";
+if (existsSync(buildLogPath)) {
+  buildLog = readFileSync(buildLogPath, "utf-8");
+}
+const buildFailed = hasConversion && !distExists;
+const buildSuccess = hasConversion && distExists;
 ---
 
 <Dashboard title="Preview" projectId={projectId} projectName={project.name}>
-  {hasConversion ? (
+  {buildSuccess ? (
     <div class="space-y-4">
       <div class="flex items-center justify-between">
         <div>
@@ -54,6 +67,40 @@ const previewUrl = `/api/projects/${projectId}/preview/`;
           class="w-full h-full mx-auto transition-all duration-300"
           style="border: none;"
         ></iframe>
+      </div>
+    </div>
+  ) : buildFailed ? (
+    <div class="space-y-6">
+      <div>
+        <h1 class="text-xl font-bold text-foreground">Preview indisponible</h1>
+        <p class="text-sm text-muted-foreground mt-1">
+          Le build du projet Astro a échoué. Les fichiers source restent consultables dans l'onglet Fichiers.
+        </p>
+      </div>
+
+      <div class="rounded-lg border border-red-200 bg-red-50 p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <svg xmlns="http://www.w3.org/2000/svg" class="size-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <h2 class="text-sm font-semibold text-red-900">Erreur de build</h2>
+        </div>
+        <pre class="text-xs text-red-800 bg-red-100 p-3 rounded overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto">{buildLog || "Aucun log de build disponible. Relancez la conversion."}</pre>
+      </div>
+
+      <div class="flex gap-3">
+        <a
+          href={`/project/${projectId}/files`}
+          class="px-4 py-2 text-sm bg-secondary hover:bg-secondary/80 rounded-md font-medium transition-colors"
+        >
+          Voir les fichiers source
+        </a>
+        <a
+          href={`/project/${projectId}`}
+          class="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium transition-colors"
+        >
+          Relancer la conversion
+        </a>
       </div>
     </div>
   ) : (

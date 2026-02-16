@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm, cp, mkdir } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, cp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, extname } from "node:path";
 import { execFile } from "node:child_process";
@@ -181,13 +181,31 @@ export async function runConversion(conversionId: number): Promise<void> {
 
       // 6. Build du projet Astro pour preview
       await updateStatus(conversionId, "deploying");
+      const buildLogPath = join(destDir, "build.log");
       try {
-        await exec("npm", ["install", "--ignore-scripts"], { cwd: destDir, timeout: 120_000 });
-        await exec("npx", ["astro", "build"], { cwd: destDir, timeout: 120_000 });
-      } catch (buildErr) {
+        const installResult = await exec("npm", ["install", "--ignore-scripts"], { cwd: destDir, timeout: 120_000 });
+        const buildResult = await exec("npx", ["astro", "build"], { cwd: destDir, timeout: 120_000 });
+        const log = [
+          "=== npm install ===",
+          installResult.stdout,
+          installResult.stderr,
+          "=== astro build ===",
+          buildResult.stdout,
+          buildResult.stderr,
+          "=== BUILD OK ===",
+        ].filter(Boolean).join("\n");
+        await writeFile(buildLogPath, log, "utf-8");
+      } catch (buildErr: any) {
         // Le build preview peut échouer (deps manquantes, etc.)
         // On continue quand même — les fichiers source restent consultables
-        console.error("Preview build failed (non-fatal):", buildErr instanceof Error ? buildErr.message : buildErr);
+        const errorLog = [
+          "=== BUILD FAILED ===",
+          buildErr.stdout || "",
+          buildErr.stderr || "",
+          buildErr.message || String(buildErr),
+        ].filter(Boolean).join("\n");
+        await writeFile(buildLogPath, errorLog, "utf-8");
+        console.error("Preview build failed (non-fatal):", buildErr.message || buildErr);
       }
     }
 

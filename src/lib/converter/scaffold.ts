@@ -1,12 +1,63 @@
 import { writeOutput } from "./transformer";
 import { join } from "node:path";
-import { cpSync, existsSync } from "node:fs";
+import { cpSync, existsSync, readFileSync } from "node:fs";
+
+/** Dépendances à exclure du projet source (remplacées par Astro). */
+const EXCLUDED_DEPS = [
+  "react-scripts", "vite", "@vitejs/plugin-react", "react-router-dom",
+  "react-router", "@types/node", "eslint", "prettier", "postcss",
+  "autoprefixer", "tailwindcss", // remplacé par la version Astro
+];
+
+/**
+ * Lit les dépendances du package.json source et les fusionne avec celles d'Astro.
+ */
+function mergeSourceDeps(sourceDir: string): { dependencies: Record<string, string>; devDependencies: Record<string, string> } {
+  const astroDeps: Record<string, string> = {
+    astro: "^5.0.0",
+    "@astrojs/react": "^4.0.0",
+    react: "^19.0.0",
+    "react-dom": "^19.0.0",
+    tailwindcss: "^4.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+  };
+
+  const astroDevDeps: Record<string, string> = {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    typescript: "^5.0.0",
+  };
+
+  try {
+    const sourcePkg = JSON.parse(readFileSync(join(sourceDir, "package.json"), "utf-8"));
+    const srcDeps = sourcePkg.dependencies ?? {};
+    const srcDevDeps = sourcePkg.devDependencies ?? {};
+
+    // Fusionner les dépendances source (sauf celles exclues et celles déjà dans Astro)
+    for (const [name, version] of Object.entries(srcDeps) as [string, string][]) {
+      if (!EXCLUDED_DEPS.includes(name) && !astroDeps[name]) {
+        astroDeps[name] = version;
+      }
+    }
+    for (const [name, version] of Object.entries(srcDevDeps) as [string, string][]) {
+      if (!EXCLUDED_DEPS.includes(name) && !astroDevDeps[name] && !astroDeps[name]) {
+        astroDevDeps[name] = version;
+      }
+    }
+  } catch {
+    // Pas de package.json source, on continue avec les deps de base
+  }
+
+  return { dependencies: astroDeps, devDependencies: astroDevDeps };
+}
 
 /**
  * Génère le scaffold de base d'un projet Astro dans le répertoire de sortie.
  * Inclut package.json, astro.config, tsconfig, layout de base et styles.
  */
 export function generateScaffold(outputDir: string, sourceDir: string): void {
+  const { dependencies, devDependencies } = mergeSourceDeps(sourceDir);
+
   // package.json
   writeOutput(
     join(outputDir, "package.json"),
@@ -21,19 +72,8 @@ export function generateScaffold(outputDir: string, sourceDir: string): void {
           build: "astro build",
           preview: "astro preview",
         },
-        dependencies: {
-          astro: "^5.0.0",
-          "@astrojs/react": "^4.0.0",
-          react: "^19.0.0",
-          "react-dom": "^19.0.0",
-          tailwindcss: "^4.0.0",
-          "@tailwindcss/vite": "^4.0.0",
-        },
-        devDependencies: {
-          "@types/react": "^19.0.0",
-          "@types/react-dom": "^19.0.0",
-          typescript: "^5.0.0",
-        },
+        dependencies,
+        devDependencies,
       },
       null,
       2,
