@@ -11,10 +11,10 @@ export const GET: APIRoute = async () => {
   });
 };
 
-/** POST /api/rules — Créer ou mettre à jour une règle */
+/** POST /api/rules — Créer une règle */
 export const POST: APIRoute = async ({ request }) => {
   const body = await request.json();
-  const { componentPath, mode, hydrationDirective, notes } = body;
+  const { componentPath, mode, hydrationDirective, notes, projectId } = body;
 
   if (!componentPath || !mode) {
     return new Response(JSON.stringify({ error: "componentPath and mode required" }), {
@@ -32,17 +32,9 @@ export const POST: APIRoute = async ({ request }) => {
       mode,
       hydrationDirective: hydrationDirective ?? null,
       notes: notes ?? null,
+      projectId: projectId ?? null,
       createdAt: now,
       updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: rules.componentPath,
-      set: {
-        mode,
-        hydrationDirective: hydrationDirective ?? null,
-        notes: notes ?? null,
-        updatedAt: now,
-      },
     })
     .returning();
 

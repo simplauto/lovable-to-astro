@@ -12,9 +12,10 @@ interface Rule {
 
 interface Props {
   initialRules: Rule[];
+  projectId?: number;
 }
 
-export default function RulesManager({ initialRules }: Props) {
+export default function RulesManager({ initialRules, projectId }: Props) {
   const [rules, setRules] = useState<Rule[]>(initialRules);
   const [editing, setEditing] = useState<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -30,7 +31,7 @@ export default function RulesManager({ initialRules }: Props) {
     const res = await fetch("/api/rules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, projectId }),
     });
     if (res.ok) {
       const rule = await res.json();

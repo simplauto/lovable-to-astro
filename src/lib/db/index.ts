@@ -7,8 +7,17 @@ sqlite.pragma("journal_mode = WAL");
 
 // Auto-create tables if they don't exist
 sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    source_repo TEXT NOT NULL,
+    target_repo TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS conversions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER REFERENCES projects(id),
     commit_sha TEXT NOT NULL,
     commit_message TEXT,
     branch TEXT DEFAULT 'main',
@@ -19,7 +28,8 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    component_path TEXT NOT NULL UNIQUE,
+    project_id INTEGER REFERENCES projects(id),
+    component_path TEXT NOT NULL,
     mode TEXT NOT NULL,
     hydration_directive TEXT,
     notes TEXT,
@@ -60,5 +70,13 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 `);
+
+// Migration: add project_id columns to existing tables if missing
+try {
+  sqlite.exec(`ALTER TABLE conversions ADD COLUMN project_id INTEGER REFERENCES projects(id)`);
+} catch (_) { /* column already exists */ }
+try {
+  sqlite.exec(`ALTER TABLE rules ADD COLUMN project_id INTEGER REFERENCES projects(id)`);
+} catch (_) { /* column already exists */ }
 
 export const db = drizzle(sqlite, { schema });

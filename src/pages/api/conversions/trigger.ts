@@ -6,7 +6,7 @@ import { runConversion } from "../../../lib/converter/pipeline";
 /** POST /api/conversions/trigger — Déclencher une conversion manuelle */
 export const POST: APIRoute = async ({ request }) => {
   const body = await request.json();
-  const { commitSha, commitMessage, branch } = body;
+  const { commitSha, commitMessage, branch, projectId } = body;
 
   if (!commitSha) {
     return new Response(JSON.stringify({ error: "commitSha required" }), {
@@ -21,6 +21,7 @@ export const POST: APIRoute = async ({ request }) => {
       commitSha,
       commitMessage: commitMessage ?? "manual trigger",
       branch: branch ?? "main",
+      projectId: projectId ?? null,
       status: "pending",
       startedAt: new Date().toISOString(),
     })

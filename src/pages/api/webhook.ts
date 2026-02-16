@@ -1,8 +1,9 @@
 import type { APIRoute } from "astro";
 import { validateWebhookSignature } from "../../lib/github/webhook";
 import { db } from "../../lib/db";
-import { conversions } from "../../lib/db/schema";
+import { conversions, projects } from "../../lib/db/schema";
 import { runConversion } from "../../lib/converter/pipeline";
+import { eq } from "drizzle-orm";
 
 export const POST: APIRoute = async ({ request }) => {
   const body = await request.text();
@@ -21,11 +22,25 @@ export const POST: APIRoute = async ({ request }) => {
   const commitSha = payload.after;
   const commitMessage = payload.head_commit?.message ?? null;
   const branch = payload.ref?.replace("refs/heads/", "") ?? "main";
+  const repoFullName = payload.repository?.full_name;
+
+  // Match webhook to a project by source repo
+  let projectId: number | null = null;
+  if (repoFullName) {
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(eq(projects.sourceRepo, repoFullName));
+    if (project) {
+      projectId = project.id;
+    }
+  }
 
   const [conversion] = await db.insert(conversions).values({
     commitSha,
     commitMessage,
     branch,
+    projectId,
     status: "pending",
     startedAt: new Date().toISOString(),
   }).returning();
@@ -35,7 +50,7 @@ export const POST: APIRoute = async ({ request }) => {
     console.error(`Conversion ${conversion.id} failed:`, err);
   });
 
-  return new Response(JSON.stringify({ conversionId: conversion.id }), {
+  return new Response(JSON.stringify({ conversionId: conversion.id, projectId }), {
     status: 202,
     headers: { "Content-Type": "application/json" },
   });

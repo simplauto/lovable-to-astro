@@ -1,60 +1,79 @@
 ---
-import Dashboard from "../layouts/Dashboard.astro";
-import { db } from "../lib/db";
-import { questions } from "../lib/db/schema";
-import { isNull, isNotNull, desc } from "drizzle-orm";
+import Dashboard from "../../../layouts/Dashboard.astro";
+import { db } from "../../../lib/db";
+import { projects, questions, conversions } from "../../../lib/db/schema";
+import { isNull, isNotNull, desc, eq, and } from "drizzle-orm";
+
+const projectId = Number(Astro.params.id);
+if (isNaN(projectId)) return Astro.redirect("/");
+
+const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+if (!project) return Astro.redirect("/");
 
 const pendingQuestions = await db
-  .select()
+  .select({
+    id: questions.id,
+    componentPath: questions.componentPath,
+    questionText: questions.questionText,
+    context: questions.context,
+    createdAt: questions.createdAt,
+  })
   .from(questions)
-  .where(isNull(questions.answeredAt))
+  .innerJoin(conversions, eq(questions.conversionId, conversions.id))
+  .where(and(eq(conversions.projectId, projectId), isNull(questions.answeredAt)))
   .orderBy(desc(questions.createdAt));
 
 const answeredQuestions = await db
-  .select()
+  .select({
+    id: questions.id,
+    componentPath: questions.componentPath,
+    answer: questions.answer,
+    answeredAt: questions.answeredAt,
+  })
   .from(questions)
-  .where(isNotNull(questions.answeredAt))
+  .innerJoin(conversions, eq(questions.conversionId, conversions.id))
+  .where(and(eq(conversions.projectId, projectId), isNotNull(questions.answeredAt)))
   .orderBy(desc(questions.answeredAt))
   .limit(20);
 ---
 
-<Dashboard title="File d'attente">
+<Dashboard title="File d'attente" projectId={projectId} projectName={project.name}>
   <div class="space-y-8">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900">File d'attente</h1>
-      <p class="mt-1 text-sm text-gray-500">
+      <h1 class="text-2xl font-bold text-foreground">File d'attente</h1>
+      <p class="mt-1 text-sm text-muted-foreground">
         Questions en attente de réponse pour la conversion.
       </p>
     </div>
 
-    <div class="bg-white rounded-lg border border-gray-200">
-      <div class="px-6 py-4 border-b border-gray-200">
+    <div class="rounded-lg border border-border bg-card">
+      <div class="px-6 py-4 border-b border-border">
         <h2 class="text-lg font-medium text-orange-600">
           En attente ({pendingQuestions.length})
         </h2>
       </div>
       {pendingQuestions.length === 0 ? (
-        <div class="px-6 py-12 text-center text-gray-500">
+        <div class="px-6 py-12 text-center text-muted-foreground">
           Aucune question en attente.
         </div>
       ) : (
-        <div class="divide-y divide-gray-200">
+        <div class="divide-y divide-border">
           {pendingQuestions.map((q) => (
             <div class="px-6 py-4 space-y-2">
               <div class="flex justify-between items-start">
-                <span class="font-mono text-sm text-gray-900">{q.componentPath}</span>
-                <span class="text-xs text-gray-400">{q.createdAt}</span>
+                <span class="font-mono text-sm text-card-foreground">{q.componentPath}</span>
+                <span class="text-xs text-muted-foreground">{q.createdAt}</span>
               </div>
-              <p class="text-sm text-gray-700">{q.questionText}</p>
+              <p class="text-sm text-muted-foreground">{q.questionText}</p>
               {q.context && (
-                <pre class="text-xs bg-gray-50 p-3 rounded overflow-x-auto">{q.context}</pre>
+                <pre class="text-xs bg-muted p-3 rounded overflow-x-auto">{q.context}</pre>
               )}
               <form method="POST" action={`/api/queue/${q.id}/answer`} class="flex gap-2 pt-2">
                 <button
                   type="submit"
                   name="answer"
                   value="static"
-                  class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-md font-medium"
+                  class="px-3 py-1.5 text-sm bg-secondary hover:bg-secondary/80 rounded-md font-medium"
                 >
                   Statique
                 </button>
@@ -90,14 +109,14 @@ const answeredQuestions = await db
     </div>
 
     {answeredQuestions.length > 0 && (
-      <div class="bg-white rounded-lg border border-gray-200">
-        <div class="px-6 py-4 border-b border-gray-200">
-          <h2 class="text-lg font-medium text-gray-600">Historique</h2>
+      <div class="rounded-lg border border-border bg-card">
+        <div class="px-6 py-4 border-b border-border">
+          <h2 class="text-lg font-medium text-muted-foreground">Historique</h2>
         </div>
-        <div class="divide-y divide-gray-200">
+        <div class="divide-y divide-border">
           {answeredQuestions.map((q) => (
             <div class="px-6 py-3 flex justify-between items-center">
-              <span class="font-mono text-sm text-gray-700">{q.componentPath}</span>
+              <span class="font-mono text-sm text-card-foreground">{q.componentPath}</span>
               <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 font-medium">
                 {q.answer}
               </span>

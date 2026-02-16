@@ -1,0 +1,23 @@
+---
+import Dashboard from "../../../layouts/Dashboard.astro";
+import RulesManager from "../../../components/RulesManager";
+import { db } from "../../../lib/db";
+import { projects, rules } from "../../../lib/db/schema";
+import { asc, eq } from "drizzle-orm";
+
+const projectId = Number(Astro.params.id);
+if (isNaN(projectId)) return Astro.redirect("/");
+
+const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+if (!project) return Astro.redirect("/");
+
+const allRules = await db
+  .select()
+  .from(rules)
+  .where(eq(rules.projectId, projectId))
+  .orderBy(asc(rules.componentPath));
+---
+
+<Dashboard title="Règles de conversion" projectId={projectId} projectName={project.name}>
+  <RulesManager client:load initialRules={allRules} projectId={projectId} />
+</Dashboard>

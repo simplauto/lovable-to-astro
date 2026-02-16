@@ -1,192 +1,123 @@
 ---
-import Dashboard from "../layouts/Dashboard.astro";
+import "../styles/global.css";
 import { db } from "../lib/db";
-import { conversions, questions } from "../lib/db/schema";
-import { desc, isNull, count } from "drizzle-orm";
+import { projects, conversions, questions } from "../lib/db/schema";
+import { desc, eq, sql, isNull } from "drizzle-orm";
+import AddProjectDialog from "../components/AddProjectDialog";
 
-const recentConversions = await db
-  .select()
-  .from(conversions)
-  .orderBy(desc(conversions.startedAt))
-  .limit(10);
+const user = Astro.locals.user;
 
-const [{ value: pendingCount }] = await db
-  .select({ value: count() })
-  .from(questions)
-  .where(isNull(questions.answeredAt));
+const allProjects = db
+  .select({
+    id: projects.id,
+    name: projects.name,
+    sourceRepo: projects.sourceRepo,
+    createdAt: projects.createdAt,
+    conversionCount: sql<number>`(SELECT COUNT(*) FROM conversions WHERE project_id = ${projects.id})`,
+    pendingQuestions: sql<number>`(SELECT COUNT(*) FROM questions q JOIN conversions c ON q.conversion_id = c.id WHERE c.project_id = ${projects.id} AND q.answer IS NULL)`,
+    lastStatus: sql<string | null>`(SELECT status FROM conversions WHERE project_id = ${projects.id} ORDER BY started_at DESC LIMIT 1)`,
+  })
+  .from(projects)
+  .orderBy(desc(projects.createdAt))
+  .all();
 
-const lastDone = recentConversions.find((c) => c.status === "done");
-const runningConversion = recentConversions.find((c) =>
-  ["pending", "analyzing", "converting", "pushing", "deploying"].includes(c.status),
-);
-
-const statusLabel = runningConversion
-  ? `${runningConversion.status} (${runningConversion.commitSha.slice(0, 7)})`
-  : "En attente";
-const statusColor = runningConversion ? "text-blue-600" : "text-green-600";
+function statusBadge(status: string | null) {
+  if (!status) return { label: "Aucune conversion", cls: "bg-secondary text-secondary-foreground" };
+  if (status === "done") return { label: "Terminé", cls: "bg-green-100 text-green-800" };
+  if (status === "error") return { label: "Erreur", cls: "bg-red-100 text-red-800" };
+  if (status === "waiting_answers") return { label: "En attente", cls: "bg-orange-100 text-orange-800" };
+  return { label: status, cls: "bg-blue-100 text-blue-800" };
+}
 ---
 
-<Dashboard title="Dashboard">
-  <div class="space-y-8">
-    <div class="flex justify-between items-start">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p class="mt-1 text-sm text-gray-500">
-          Pipeline de conversion Lovable → Astro — auto-deploy actif
-        </p>
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Projets — lovable-to-astro</title>
+  </head>
+  <body class="bg-background min-h-screen">
+    <nav class="bg-card border-b border-border">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+          <div class="flex items-center">
+            <span class="text-lg font-bold text-foreground">lovable-to-astro</span>
+          </div>
+          {user && (
+            <div class="flex items-center gap-4">
+              <span class="text-sm text-muted-foreground">{user.email}</span>
+              <form method="POST" action="/api/auth/logout">
+                <button
+                  type="submit"
+                  class="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Déconnexion
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
       </div>
-      <div class="flex gap-3">
-        <button
-          id="trigger-btn"
-          class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          disabled={!!runningConversion}
-        >
-          Conversion manuelle
-        </button>
-        {lastDone && (
-          <button
-            id="deploy-prod-btn"
-            class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={!!runningConversion}
-          >
-            Déployer en production
-          </button>
-        )}
-      </div>
-    </div>
+    </nav>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 class="text-sm font-medium text-gray-500">Conversions récentes</h3>
-        <p class="mt-2 text-3xl font-bold text-gray-900">
-          {recentConversions.length}
-        </p>
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div class="flex justify-between items-center mb-8">
+        <div>
+          <h1 class="text-2xl font-bold text-foreground">Projets</h1>
+          <p class="mt-1 text-sm text-muted-foreground">
+            Sélectionnez un projet ou ajoutez-en un nouveau.
+          </p>
+        </div>
+        <AddProjectDialog client:load />
       </div>
-      <div class="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 class="text-sm font-medium text-gray-500">Questions en attente</h3>
-        <p class="mt-2 text-3xl font-bold text-orange-600">
-          {pendingCount}
-        </p>
-      </div>
-      <div class="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 class="text-sm font-medium text-gray-500">Statut</h3>
-        <p class={`mt-2 text-lg font-semibold ${statusColor}`}>{statusLabel}</p>
-      </div>
-    </div>
 
-    <div class="bg-white rounded-lg border border-gray-200">
-      <div class="px-6 py-4 border-b border-gray-200">
-        <h2 class="text-lg font-medium text-gray-900">Dernières conversions</h2>
-      </div>
-      {recentConversions.length === 0 ? (
-        <div class="px-6 py-12 text-center text-gray-500">
-          Aucune conversion pour le moment. Envoyez un commit sur le repo Lovable pour démarrer.
+      {allProjects.length === 0 ? (
+        <div class="flex flex-col items-center justify-center py-24 text-center">
+          <div class="rounded-full bg-muted p-4 mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-foreground">Aucun projet</h2>
+          <p class="mt-1 text-sm text-muted-foreground max-w-sm">
+            Commencez par ajouter un projet Lovable pour lancer la conversion vers Astro.
+          </p>
+          <div class="mt-6">
+            <AddProjectDialog client:load />
+          </div>
         </div>
       ) : (
-        <table class="min-w-full divide-y divide-gray-200">
-          <thead class="bg-gray-50">
-            <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Commit</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-200">
-            {recentConversions.map((c) => (
-              <tr class="hover:bg-gray-50 cursor-pointer" onclick={`window.location='/conversion/${c.id}'`}>
-                <td class="px-6 py-4 text-sm font-mono text-gray-900">
-                  <a href={`/conversion/${c.id}`} class="hover:underline">
-                    {c.commitSha.slice(0, 7)}
-                  </a>
-                  {c.commitMessage && (
-                    <span class="ml-2 text-gray-500 font-sans">{c.commitMessage}</span>
-                  )}
-                </td>
-                <td class="px-6 py-4">
-                  <span class:list={[
-                    "px-2 py-1 text-xs rounded-full font-medium",
-                    c.status === "done" && "bg-green-100 text-green-800",
-                    c.status === "error" && "bg-red-100 text-red-800",
-                    c.status === "waiting_answers" && "bg-orange-100 text-orange-800",
-                    !["done", "error", "waiting_answers"].includes(c.status) && "bg-blue-100 text-blue-800",
-                  ]}>
-                    {c.status}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {allProjects.map((p) => {
+            const badge = statusBadge(p.lastStatus);
+            return (
+              <a
+                href={`/project/${p.id}`}
+                class="block rounded-lg border border-border bg-card p-6 hover:border-ring hover:shadow-sm transition-all"
+              >
+                <div class="flex items-start justify-between">
+                  <div class="min-w-0">
+                    <h3 class="font-semibold text-card-foreground truncate">{p.name}</h3>
+                    <p class="text-sm text-muted-foreground mt-0.5 truncate">{p.sourceRepo}</p>
+                  </div>
+                  <span class:list={["px-2 py-0.5 text-xs rounded-full font-medium shrink-0 ml-2", badge.cls]}>
+                    {badge.label}
                   </span>
-                </td>
-                <td class="px-6 py-4 text-sm text-gray-500">{c.startedAt}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+                <div class="mt-4 flex gap-4 text-sm text-muted-foreground">
+                  <span>{p.conversionCount} conversion{p.conversionCount !== 1 ? "s" : ""}</span>
+                  {p.pendingQuestions > 0 && (
+                    <span class="text-orange-600 font-medium">
+                      {p.pendingQuestions} question{p.pendingQuestions !== 1 ? "s" : ""} en attente
+                    </span>
+                  )}
+                </div>
+              </a>
+            );
+          })}
+        </div>
       )}
-    </div>
-  </div>
-
-  <script>
-    // Bouton déploiement prod
-    const deployBtn = document.getElementById("deploy-prod-btn");
-    if (deployBtn) {
-      deployBtn.addEventListener("click", async () => {
-        if (!confirm("Confirmer le déploiement en production ?")) return;
-        deployBtn.setAttribute("disabled", "true");
-        deployBtn.textContent = "Déploiement en cours...";
-        try {
-          const res = await fetch("/api/deploy", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ target: "prod" }),
-          });
-          const data = await res.json();
-          if (data.ok) {
-            deployBtn.textContent = "Déployé !";
-            deployBtn.classList.replace("bg-green-600", "bg-gray-400");
-          } else {
-            alert("Erreur : " + data.error);
-            deployBtn.removeAttribute("disabled");
-            deployBtn.textContent = "Déployer en production";
-          }
-        } catch {
-          alert("Erreur réseau");
-          deployBtn.removeAttribute("disabled");
-          deployBtn.textContent = "Déployer en production";
-        }
-      });
-    }
-
-    // Bouton conversion manuelle
-    const triggerBtn = document.getElementById("trigger-btn");
-    if (triggerBtn) {
-      triggerBtn.addEventListener("click", async () => {
-        const sha = prompt("SHA du commit à convertir (ou 'HEAD' pour le dernier) :");
-        if (!sha) return;
-        triggerBtn.setAttribute("disabled", "true");
-        triggerBtn.textContent = "Lancement...";
-        try {
-          const res = await fetch("/api/conversions/trigger", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ commitSha: sha, commitMessage: "manual" }),
-          });
-          const data = await res.json();
-          if (data.conversionId) {
-            window.location.href = `/conversion/${data.conversionId}`;
-          } else {
-            alert("Erreur : " + (data.error ?? "inconnue"));
-            triggerBtn.removeAttribute("disabled");
-            triggerBtn.textContent = "Conversion manuelle";
-          }
-        } catch {
-          alert("Erreur réseau");
-          triggerBtn.removeAttribute("disabled");
-          triggerBtn.textContent = "Conversion manuelle";
-        }
-      });
-    }
-
-    // Polling : rafraîchir la page toutes les 5s si une conversion est en cours
-    const hasRunning = document.querySelector('[data-running]');
-    if (hasRunning || document.querySelector('.bg-blue-100.text-blue-800')) {
-      setTimeout(() => window.location.reload(), 5000);
-    }
-  </script>
-</Dashboard>
+    </main>
+  </body>
+</html>

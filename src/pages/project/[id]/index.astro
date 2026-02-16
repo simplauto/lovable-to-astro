@@ -1,0 +1,197 @@
+---
+import Dashboard from "../../../layouts/Dashboard.astro";
+import { db } from "../../../lib/db";
+import { projects, conversions, questions } from "../../../lib/db/schema";
+import { desc, eq, isNull, count, and } from "drizzle-orm";
+
+const projectId = Number(Astro.params.id);
+if (isNaN(projectId)) return Astro.redirect("/");
+
+const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+if (!project) return Astro.redirect("/");
+
+const recentConversions = await db
+  .select()
+  .from(conversions)
+  .where(eq(conversions.projectId, projectId))
+  .orderBy(desc(conversions.startedAt))
+  .limit(10);
+
+const [{ value: pendingCount }] = await db
+  .select({ value: count() })
+  .from(questions)
+  .innerJoin(conversions, eq(questions.conversionId, conversions.id))
+  .where(and(eq(conversions.projectId, projectId), isNull(questions.answeredAt)));
+
+const lastDone = recentConversions.find((c) => c.status === "done");
+const runningConversion = recentConversions.find((c) =>
+  ["pending", "analyzing", "converting", "pushing", "deploying"].includes(c.status),
+);
+
+const statusLabel = runningConversion
+  ? `${runningConversion.status} (${runningConversion.commitSha.slice(0, 7)})`
+  : "En attente";
+const statusColor = runningConversion ? "text-blue-600" : "text-green-600";
+---
+
+<Dashboard title="Dashboard" projectId={projectId} projectName={project.name}>
+  <div class="space-y-8">
+    <div class="flex justify-between items-start">
+      <div>
+        <h1 class="text-2xl font-bold text-foreground">Dashboard</h1>
+        <p class="mt-1 text-sm text-muted-foreground">
+          {project.sourceRepo} — Pipeline de conversion Lovable → Astro
+        </p>
+      </div>
+      <div class="flex gap-3">
+        <button
+          id="trigger-btn"
+          data-project-id={projectId}
+          class="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
+          disabled={!!runningConversion}
+        >
+          Conversion manuelle
+        </button>
+        {lastDone && (
+          <button
+            id="deploy-prod-btn"
+            class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!!runningConversion}
+          >
+            Déployer en production
+          </button>
+        )}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="rounded-lg border border-border bg-card p-6">
+        <h3 class="text-sm font-medium text-muted-foreground">Conversions récentes</h3>
+        <p class="mt-2 text-3xl font-bold text-card-foreground">
+          {recentConversions.length}
+        </p>
+      </div>
+      <div class="rounded-lg border border-border bg-card p-6">
+        <h3 class="text-sm font-medium text-muted-foreground">Questions en attente</h3>
+        <p class="mt-2 text-3xl font-bold text-orange-600">
+          {pendingCount}
+        </p>
+      </div>
+      <div class="rounded-lg border border-border bg-card p-6">
+        <h3 class="text-sm font-medium text-muted-foreground">Statut</h3>
+        <p class={`mt-2 text-lg font-semibold ${statusColor}`}>{statusLabel}</p>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-border bg-card">
+      <div class="px-6 py-4 border-b border-border">
+        <h2 class="text-lg font-medium text-card-foreground">Dernières conversions</h2>
+      </div>
+      {recentConversions.length === 0 ? (
+        <div class="px-6 py-12 text-center text-muted-foreground">
+          Aucune conversion pour le moment. Envoyez un commit sur le repo Lovable pour démarrer.
+        </div>
+      ) : (
+        <table class="min-w-full divide-y divide-border">
+          <thead class="bg-muted/50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Commit</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Statut</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Date</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            {recentConversions.map((c) => (
+              <tr class="hover:bg-muted/50 cursor-pointer" onclick={`window.location='/project/${projectId}/conversion/${c.id}'`}>
+                <td class="px-6 py-4 text-sm font-mono text-card-foreground">
+                  <a href={`/project/${projectId}/conversion/${c.id}`} class="hover:underline">
+                    {c.commitSha.slice(0, 7)}
+                  </a>
+                  {c.commitMessage && (
+                    <span class="ml-2 text-muted-foreground font-sans">{c.commitMessage}</span>
+                  )}
+                </td>
+                <td class="px-6 py-4">
+                  <span class:list={[
+                    "px-2 py-1 text-xs rounded-full font-medium",
+                    c.status === "done" && "bg-green-100 text-green-800",
+                    c.status === "error" && "bg-red-100 text-red-800",
+                    c.status === "waiting_answers" && "bg-orange-100 text-orange-800",
+                    !["done", "error", "waiting_answers"].includes(c.status) && "bg-blue-100 text-blue-800",
+                  ]}>
+                    {c.status}
+                  </span>
+                </td>
+                <td class="px-6 py-4 text-sm text-muted-foreground">{c.startedAt}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  </div>
+
+  <script>
+    const deployBtn = document.getElementById("deploy-prod-btn");
+    if (deployBtn) {
+      deployBtn.addEventListener("click", async () => {
+        if (!confirm("Confirmer le déploiement en production ?")) return;
+        deployBtn.setAttribute("disabled", "true");
+        deployBtn.textContent = "Déploiement en cours...";
+        try {
+          const res = await fetch("/api/deploy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target: "prod" }),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            deployBtn.textContent = "Déployé !";
+          } else {
+            alert("Erreur : " + data.error);
+            deployBtn.removeAttribute("disabled");
+            deployBtn.textContent = "Déployer en production";
+          }
+        } catch {
+          alert("Erreur réseau");
+          deployBtn.removeAttribute("disabled");
+          deployBtn.textContent = "Déployer en production";
+        }
+      });
+    }
+
+    const triggerBtn = document.getElementById("trigger-btn") as HTMLButtonElement | null;
+    if (triggerBtn) {
+      const projectId = triggerBtn.dataset.projectId;
+      triggerBtn.addEventListener("click", async () => {
+        const sha = prompt("SHA du commit à convertir (ou 'HEAD' pour le dernier) :");
+        if (!sha) return;
+        triggerBtn.setAttribute("disabled", "true");
+        triggerBtn.textContent = "Lancement...";
+        try {
+          const res = await fetch("/api/conversions/trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ commitSha: sha, commitMessage: "manual", projectId: Number(projectId) }),
+          });
+          const data = await res.json();
+          if (data.conversionId) {
+            window.location.href = `/project/${projectId}/conversion/${data.conversionId}`;
+          } else {
+            alert("Erreur : " + (data.error ?? "inconnue"));
+            triggerBtn.removeAttribute("disabled");
+            triggerBtn.textContent = "Conversion manuelle";
+          }
+        } catch {
+          alert("Erreur réseau");
+          triggerBtn.removeAttribute("disabled");
+          triggerBtn.textContent = "Conversion manuelle";
+        }
+      });
+    }
+
+    if (document.querySelector('.bg-blue-100.text-blue-800')) {
+      setTimeout(() => window.location.reload(), 5000);
+    }
+  </script>
+</Dashboard>
