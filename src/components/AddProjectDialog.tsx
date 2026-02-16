@@ -28,6 +28,7 @@ export default function AddProjectDialog() {
   const [search, setSearch] = useState("");
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [projectName, setProjectName] = useState("");
+  const [targetRepo, setTargetRepo] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
@@ -51,11 +52,12 @@ export default function AddProjectDialog() {
   function handleSelectRepo(repo: Repo) {
     setSelectedRepo(repo);
     setProjectName(repo.name);
+    setTargetRepo(repo.fullName + "-astro");
     setStep("name");
   }
 
   async function handleCreate() {
-    if (!selectedRepo || !projectName.trim()) return;
+    if (!selectedRepo || !projectName.trim() || !targetRepo.trim()) return;
     setCreating(true);
     setError("");
     try {
@@ -65,6 +67,7 @@ export default function AddProjectDialog() {
         body: JSON.stringify({
           name: projectName.trim(),
           sourceRepo: selectedRepo.fullName,
+          targetRepo: targetRepo.trim(),
         }),
       });
       const data = await res.json();
@@ -86,6 +89,7 @@ export default function AddProjectDialog() {
       setStep("select");
       setSelectedRepo(null);
       setProjectName("");
+      setTargetRepo("");
       setSearch("");
       setError("");
     }
@@ -174,10 +178,23 @@ export default function AddProjectDialog() {
                   onChange={(e) => setProjectName(e.target.value)}
                   placeholder="Mon projet"
                   autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">
+                  Repo cible (code Astro converti)
+                </label>
+                <Input
+                  value={targetRepo}
+                  onChange={(e) => setTargetRepo(e.target.value)}
+                  placeholder="org/mon-projet-astro"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleCreate();
                   }}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Le repo GitHub où sera poussé le code Astro. Il doit exister.
+                </p>
               </div>
               {error && (
                 <p className="text-sm text-destructive">{error}</p>
@@ -192,7 +209,7 @@ export default function AddProjectDialog() {
                 >
                   Retour
                 </Button>
-                <Button onClick={handleCreate} disabled={creating || !projectName.trim()}>
+                <Button onClick={handleCreate} disabled={creating || !projectName.trim() || !targetRepo.trim()}>
                   {creating && <Loader2 className="size-4 animate-spin" />}
                   Créer le projet
                 </Button>

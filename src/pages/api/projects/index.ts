@@ -28,7 +28,7 @@ export const GET: APIRoute = async () => {
 
 export const POST: APIRoute = async ({ request }) => {
   const body = await request.json();
-  const { name, sourceRepo } = body;
+  const { name, sourceRepo, targetRepo } = body;
 
   if (!name || !sourceRepo) {
     return new Response(JSON.stringify({ error: "name and sourceRepo are required" }), {
@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ request }) => {
   const now = new Date().toISOString();
   const result = db
     .insert(projects)
-    .values({ name, sourceRepo, createdAt: now, updatedAt: now })
+    .values({ name, sourceRepo, targetRepo: targetRepo || null, createdAt: now, updatedAt: now })
     .returning()
     .get();
 
