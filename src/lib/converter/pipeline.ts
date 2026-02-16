@@ -182,9 +182,12 @@ export async function runConversion(conversionId: number): Promise<void> {
       // 6. Build du projet Astro pour preview
       await updateStatus(conversionId, "deploying");
       const buildLogPath = join(destDir, "build.log");
+      const execOpts = { cwd: destDir, timeout: 300_000, maxBuffer: 10 * 1024 * 1024 };
       try {
-        const installResult = await exec("npm", ["install", "--ignore-scripts"], { cwd: destDir, timeout: 120_000 });
-        const buildResult = await exec("npx", ["astro", "build"], { cwd: destDir, timeout: 120_000 });
+        const installResult = await exec("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], execOpts);
+        // Utiliser le binaire local au lieu de npx (évite un téléchargement)
+        const astroBin = join(destDir, "node_modules", ".bin", "astro");
+        const buildResult = await exec(astroBin, ["build"], execOpts);
         const log = [
           "=== npm install ===",
           installResult.stdout,
