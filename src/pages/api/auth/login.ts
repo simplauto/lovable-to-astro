@@ -2,29 +2,20 @@ import type { APIRoute } from "astro";
 import { db } from "../../../lib/db";
 import { users } from "../../../lib/db/schema";
 import { eq } from "drizzle-orm";
-import {
-  isAllowedDomain,
-  verifyPassword,
-  createSession,
-  setSessionCookie,
-} from "../../../lib/auth";
+import { verifyPassword, createSession, setSessionCookie } from "../../../lib/auth";
 
-export const POST: APIRoute = async ({ request, redirect }) => {
+export const POST: APIRoute = async ({ request }) => {
   const form = await request.formData();
   const email = (form.get("email") as string)?.trim().toLowerCase();
   const password = form.get("password") as string;
 
   if (!email || !password) {
-    return redirect("/login?error=invalid");
-  }
-
-  if (!isAllowedDomain(email)) {
-    return redirect("/login?error=domain");
+    return new Response(null, { status: 302, headers: { Location: "/login?error=1" } });
   }
 
   const user = db.select().from(users).where(eq(users.email, email)).get();
   if (!user || !verifyPassword(password, user.passwordHash)) {
-    return redirect("/login?error=invalid");
+    return new Response(null, { status: 302, headers: { Location: "/login?error=1" } });
   }
 
   const token = createSession(user.id);

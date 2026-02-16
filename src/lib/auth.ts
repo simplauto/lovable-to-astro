@@ -1,10 +1,9 @@
 import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
-import { hashSync, compareSync } from "bcryptjs";
+import { compareSync } from "bcryptjs";
 import { db } from "./db";
 import { users, sessions } from "./db/schema";
 import { eq, and, gt } from "drizzle-orm";
 
-const ALLOWED_DOMAINS = ["simplauto.com", "naeka.fr"];
 const SESSION_COOKIE = "session";
 const SESSION_TTL_DAYS = 7;
 
@@ -14,18 +13,7 @@ function getSessionSecret(): string {
   return secret;
 }
 
-// --- Domain check ---
-
-export function isAllowedDomain(email: string): boolean {
-  const domain = email.split("@")[1]?.toLowerCase();
-  return !!domain && ALLOWED_DOMAINS.includes(domain);
-}
-
 // --- Password ---
-
-export function hashPassword(password: string): string {
-  return hashSync(password, 12);
-}
 
 export function verifyPassword(password: string, hash: string): boolean {
   return compareSync(password, hash);
@@ -102,9 +90,3 @@ export function clearSessionCookie(headers: Headers): void {
   headers.set("Set-Cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
 }
 
-// --- Helpers ---
-
-export function getUserCount(): number {
-  const result = db.select({ id: users.id }).from(users).all();
-  return result.length;
-}
