@@ -1,11 +1,10 @@
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, cp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, extname } from "node:path";
 import { db } from "../db";
 import { conversions, questions, projects } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { cloneSourceRepo, pushToTargetRepo } from "../github/client";
-import { deployCoolify } from "../coolify/client";
+import { cloneSourceRepo } from "../github/client";
 import { analyzeComponent } from "./analyzer";
 import { findRule, needsQuestion } from "../rules/engine";
 import { suggestHydrationDirective } from "./islands";
@@ -13,6 +12,11 @@ import { generateAstroPage, writeOutput } from "./transformer";
 import { extractRoutes } from "./router";
 import { generateScaffold } from "./scaffold";
 import type { ComponentAnalysis, ConversionRule, ConversionStatus } from "../../types";
+
+/** Répertoire persistant pour les fichiers générés d'un projet. */
+export function projectOutputDir(projectId: number): string {
+  return join(process.cwd(), "data", "projects", String(projectId), "output");
+}
 
 async function updateStatus(id: number, status: ConversionStatus, errorMessage?: string) {
   await db
@@ -59,7 +63,6 @@ export async function runConversion(conversionId: number): Promise<void> {
       .where(eq(conversions.id, conversionId));
 
     let sourceRepo: string | undefined;
-    let targetRepo: string | undefined;
     if (conversion0?.projectId) {
       const [project] = await db
         .select()
@@ -67,7 +70,6 @@ export async function runConversion(conversionId: number): Promise<void> {
         .where(eq(projects.id, conversion0.projectId));
       if (project) {
         sourceRepo = project.sourceRepo;
-        targetRepo = project.targetRepo ?? undefined;
       }
     }
 
@@ -163,23 +165,16 @@ export async function runConversion(conversionId: number): Promise<void> {
       }
     }
 
-    // 5. Push vers le repo cible
+    // 5. Copier les fichiers générés vers le répertoire persistant du projet
     await updateStatus(conversionId, "pushing");
 
-    const [conversion] = await db
-      .select()
-      .from(conversions)
-      .where(eq(conversions.id, conversionId));
-
-    await pushToTargetRepo(
-      outputDir,
-      `Convert ${conversion.commitSha.slice(0, 7)}: ${conversion.commitMessage ?? "auto-conversion"}`,
-      targetRepo,
-    );
-
-    // 6. Déploiement preview automatique
-    await updateStatus(conversionId, "deploying");
-    await deployCoolify("preview");
+    if (conversion0?.projectId) {
+      const destDir = projectOutputDir(conversion0.projectId);
+      // Supprimer l'ancienne sortie si elle existe
+      await rm(destDir, { recursive: true, force: true }).catch(() => {});
+      await mkdir(destDir, { recursive: true });
+      await cp(outputDir, destDir, { recursive: true });
+    }
 
     await updateStatus(conversionId, "done");
   } catch (err) {

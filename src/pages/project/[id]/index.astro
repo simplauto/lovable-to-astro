@@ -57,48 +57,17 @@ function statusLabel(status: string) {
     <div class="flex justify-between items-start">
       <div>
         <h1 class="text-2xl font-bold text-foreground">{project.name}</h1>
-        <p class="mt-1 text-sm text-muted-foreground">
-          {project.sourceRepo} → {project.targetRepo ?? <span class="text-amber-600">repo cible non défini</span>}
-        </p>
+        <p class="mt-1 text-sm text-muted-foreground">{project.sourceRepo}</p>
       </div>
       <button
         id="convert-btn"
         data-project-id={projectId}
         class="px-5 py-2.5 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        disabled={!!runningConversion || !project.targetRepo}
+        disabled={!!runningConversion}
       >
         {runningConversion ? "Conversion en cours..." : "Lancer la conversion"}
       </button>
     </div>
-
-    <!-- Avertissement si pas de repo cible -->
-    {!project.targetRepo && (
-      <div class="rounded-lg border border-amber-200 bg-amber-50 p-4">
-        <div class="flex items-center gap-2 mb-3">
-          <svg xmlns="http://www.w3.org/2000/svg" class="size-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <h2 class="text-sm font-semibold text-amber-900">Repo cible manquant</h2>
-        </div>
-        <p class="text-xs text-amber-700 mb-3">
-          Indiquez le repo GitHub où sera poussé le code Astro converti. Ce repo doit exister sur GitHub.
-        </p>
-        <form id="target-repo-form" class="flex gap-2">
-          <input
-            type="text"
-            id="target-repo-input"
-            placeholder="org/mon-projet-astro"
-            class="flex-1 px-3 py-1.5 text-sm border border-amber-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
-          />
-          <button
-            type="submit"
-            class="px-4 py-1.5 text-sm bg-amber-600 text-white rounded-md hover:bg-amber-700 font-medium transition-colors"
-          >
-            Enregistrer
-          </button>
-        </form>
-      </div>
-    )}
 
     <!-- Bannière de statut si conversion en cours -->
     {runningConversion && (
@@ -209,12 +178,22 @@ function statusLabel(status: string) {
               {lastConversion.commitMessage} — {lastConversion.startedAt}
             </p>
           </div>
+          <div class="flex items-center gap-3">
+            {lastConversion.status === "done" && (
+              <a
+                href={`/project/${projectId}/files`}
+                class="px-4 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 font-medium transition-colors"
+              >
+                Voir les fichiers
+              </a>
+            )}
           <a
             href={`/project/${projectId}/conversion/${lastConversion.id}`}
             class="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             Voir le détail →
           </a>
+          </div>
         </div>
         {lastConversion.errorMessage && (
           <pre class="mt-3 text-xs text-red-800 bg-red-100 p-3 rounded overflow-x-auto">{lastConversion.errorMessage}</pre>
@@ -289,32 +268,6 @@ function statusLabel(status: string) {
           alert("Erreur réseau");
           convertBtn.disabled = false;
           convertBtn.textContent = "Lancer la conversion";
-        }
-      });
-    }
-
-    // Formulaire repo cible
-    const targetRepoForm = document.getElementById("target-repo-form") as HTMLFormElement | null;
-    if (targetRepoForm) {
-      const projectId = convertBtn?.dataset.projectId;
-      targetRepoForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const input = document.getElementById("target-repo-input") as HTMLInputElement;
-        const value = input.value.trim();
-        if (!value || !projectId) return;
-        try {
-          const res = await fetch(`/api/projects/${projectId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ targetRepo: value }),
-          });
-          if (res.ok) {
-            window.location.reload();
-          } else {
-            alert("Erreur lors de la sauvegarde");
-          }
-        } catch {
-          alert("Erreur réseau");
         }
       });
     }
