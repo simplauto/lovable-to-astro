@@ -1,0 +1,110 @@
+---
+import Dashboard from "../layouts/Dashboard.astro";
+import { db } from "../lib/db";
+import { questions } from "../lib/db/schema";
+import { isNull, isNotNull, desc } from "drizzle-orm";
+
+const pendingQuestions = await db
+  .select()
+  .from(questions)
+  .where(isNull(questions.answeredAt))
+  .orderBy(desc(questions.createdAt));
+
+const answeredQuestions = await db
+  .select()
+  .from(questions)
+  .where(isNotNull(questions.answeredAt))
+  .orderBy(desc(questions.answeredAt))
+  .limit(20);
+---
+
+<Dashboard title="File d'attente">
+  <div class="space-y-8">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">File d'attente</h1>
+      <p class="mt-1 text-sm text-gray-500">
+        Questions en attente de réponse pour la conversion.
+      </p>
+    </div>
+
+    <div class="bg-white rounded-lg border border-gray-200">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-medium text-orange-600">
+          En attente ({pendingQuestions.length})
+        </h2>
+      </div>
+      {pendingQuestions.length === 0 ? (
+        <div class="px-6 py-12 text-center text-gray-500">
+          Aucune question en attente.
+        </div>
+      ) : (
+        <div class="divide-y divide-gray-200">
+          {pendingQuestions.map((q) => (
+            <div class="px-6 py-4 space-y-2">
+              <div class="flex justify-between items-start">
+                <span class="font-mono text-sm text-gray-900">{q.componentPath}</span>
+                <span class="text-xs text-gray-400">{q.createdAt}</span>
+              </div>
+              <p class="text-sm text-gray-700">{q.questionText}</p>
+              {q.context && (
+                <pre class="text-xs bg-gray-50 p-3 rounded overflow-x-auto">{q.context}</pre>
+              )}
+              <form method="POST" action={`/api/queue/${q.id}/answer`} class="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  name="answer"
+                  value="static"
+                  class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-md font-medium"
+                >
+                  Statique
+                </button>
+                <button
+                  type="submit"
+                  name="answer"
+                  value="island:client:load"
+                  class="px-3 py-1.5 text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-md font-medium"
+                >
+                  Îlot (client:load)
+                </button>
+                <button
+                  type="submit"
+                  name="answer"
+                  value="island:client:visible"
+                  class="px-3 py-1.5 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md font-medium"
+                >
+                  Îlot (client:visible)
+                </button>
+                <button
+                  type="submit"
+                  name="answer"
+                  value="island:client:idle"
+                  class="px-3 py-1.5 text-sm bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md font-medium"
+                >
+                  Îlot (client:idle)
+                </button>
+              </form>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
+    {answeredQuestions.length > 0 && (
+      <div class="bg-white rounded-lg border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-lg font-medium text-gray-600">Historique</h2>
+        </div>
+        <div class="divide-y divide-gray-200">
+          {answeredQuestions.map((q) => (
+            <div class="px-6 py-3 flex justify-between items-center">
+              <span class="font-mono text-sm text-gray-700">{q.componentPath}</span>
+              <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 font-medium">
+                {q.answer}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+</Dashboard>

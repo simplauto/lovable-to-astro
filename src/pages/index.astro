@@ -1,0 +1,192 @@
+---
+import Dashboard from "../layouts/Dashboard.astro";
+import { db } from "../lib/db";
+import { conversions, questions } from "../lib/db/schema";
+import { desc, isNull, count } from "drizzle-orm";
+
+const recentConversions = await db
+  .select()
+  .from(conversions)
+  .orderBy(desc(conversions.startedAt))
+  .limit(10);
+
+const [{ value: pendingCount }] = await db
+  .select({ value: count() })
+  .from(questions)
+  .where(isNull(questions.answeredAt));
+
+const lastDone = recentConversions.find((c) => c.status === "done");
+const runningConversion = recentConversions.find((c) =>
+  ["pending", "analyzing", "converting", "pushing", "deploying"].includes(c.status),
+);
+
+const statusLabel = runningConversion
+  ? `${runningConversion.status} (${runningConversion.commitSha.slice(0, 7)})`
+  : "En attente";
+const statusColor = runningConversion ? "text-blue-600" : "text-green-600";
+---
+
+<Dashboard title="Dashboard">
+  <div class="space-y-8">
+    <div class="flex justify-between items-start">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <p class="mt-1 text-sm text-gray-500">
+          Pipeline de conversion Lovable → Astro
+        </p>
+      </div>
+      <div class="flex gap-3">
+        <button
+          id="trigger-btn"
+          class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          disabled={!!runningConversion}
+        >
+          Conversion manuelle
+        </button>
+        {lastDone && (
+          <button
+            id="deploy-prod-btn"
+            class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!!runningConversion}
+          >
+            Déployer en production
+          </button>
+        )}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-500">Conversions récentes</h3>
+        <p class="mt-2 text-3xl font-bold text-gray-900">
+          {recentConversions.length}
+        </p>
+      </div>
+      <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-500">Questions en attente</h3>
+        <p class="mt-2 text-3xl font-bold text-orange-600">
+          {pendingCount}
+        </p>
+      </div>
+      <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-500">Statut</h3>
+        <p class={`mt-2 text-lg font-semibold ${statusColor}`}>{statusLabel}</p>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-lg border border-gray-200">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-medium text-gray-900">Dernières conversions</h2>
+      </div>
+      {recentConversions.length === 0 ? (
+        <div class="px-6 py-12 text-center text-gray-500">
+          Aucune conversion pour le moment. Envoyez un commit sur le repo Lovable pour démarrer.
+        </div>
+      ) : (
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Commit</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200">
+            {recentConversions.map((c) => (
+              <tr class="hover:bg-gray-50 cursor-pointer" onclick={`window.location='/conversion/${c.id}'`}>
+                <td class="px-6 py-4 text-sm font-mono text-gray-900">
+                  <a href={`/conversion/${c.id}`} class="hover:underline">
+                    {c.commitSha.slice(0, 7)}
+                  </a>
+                  {c.commitMessage && (
+                    <span class="ml-2 text-gray-500 font-sans">{c.commitMessage}</span>
+                  )}
+                </td>
+                <td class="px-6 py-4">
+                  <span class:list={[
+                    "px-2 py-1 text-xs rounded-full font-medium",
+                    c.status === "done" && "bg-green-100 text-green-800",
+                    c.status === "error" && "bg-red-100 text-red-800",
+                    c.status === "waiting_answers" && "bg-orange-100 text-orange-800",
+                    !["done", "error", "waiting_answers"].includes(c.status) && "bg-blue-100 text-blue-800",
+                  ]}>
+                    {c.status}
+                  </span>
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-500">{c.startedAt}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  </div>
+
+  <script>
+    // Bouton déploiement prod
+    const deployBtn = document.getElementById("deploy-prod-btn");
+    if (deployBtn) {
+      deployBtn.addEventListener("click", async () => {
+        if (!confirm("Confirmer le déploiement en production ?")) return;
+        deployBtn.setAttribute("disabled", "true");
+        deployBtn.textContent = "Déploiement en cours...";
+        try {
+          const res = await fetch("/api/deploy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target: "prod" }),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            deployBtn.textContent = "Déployé !";
+            deployBtn.classList.replace("bg-green-600", "bg-gray-400");
+          } else {
+            alert("Erreur : " + data.error);
+            deployBtn.removeAttribute("disabled");
+            deployBtn.textContent = "Déployer en production";
+          }
+        } catch {
+          alert("Erreur réseau");
+          deployBtn.removeAttribute("disabled");
+          deployBtn.textContent = "Déployer en production";
+        }
+      });
+    }
+
+    // Bouton conversion manuelle
+    const triggerBtn = document.getElementById("trigger-btn");
+    if (triggerBtn) {
+      triggerBtn.addEventListener("click", async () => {
+        const sha = prompt("SHA du commit à convertir (ou 'HEAD' pour le dernier) :");
+        if (!sha) return;
+        triggerBtn.setAttribute("disabled", "true");
+        triggerBtn.textContent = "Lancement...";
+        try {
+          const res = await fetch("/api/conversions/trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ commitSha: sha, commitMessage: "manual" }),
+          });
+          const data = await res.json();
+          if (data.conversionId) {
+            window.location.href = `/conversion/${data.conversionId}`;
+          } else {
+            alert("Erreur : " + (data.error ?? "inconnue"));
+            triggerBtn.removeAttribute("disabled");
+            triggerBtn.textContent = "Conversion manuelle";
+          }
+        } catch {
+          alert("Erreur réseau");
+          triggerBtn.removeAttribute("disabled");
+          triggerBtn.textContent = "Conversion manuelle";
+        }
+      });
+    }
+
+    // Polling : rafraîchir la page toutes les 5s si une conversion est en cours
+    const hasRunning = document.querySelector('[data-running]');
+    if (hasRunning || document.querySelector('.bg-blue-100.text-blue-800')) {
+      setTimeout(() => window.location.reload(), 5000);
+    }
+  </script>
+</Dashboard>

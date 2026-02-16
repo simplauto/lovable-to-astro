@@ -1,0 +1,114 @@
+---
+import Dashboard from "../../layouts/Dashboard.astro";
+import { db } from "../../lib/db";
+import { conversions, questions } from "../../lib/db/schema";
+import { eq } from "drizzle-orm";
+
+const id = Number(Astro.params.id);
+if (isNaN(id)) {
+  return Astro.redirect("/");
+}
+
+const [conversion] = await db
+  .select()
+  .from(conversions)
+  .where(eq(conversions.id, id));
+
+if (!conversion) {
+  return Astro.redirect("/");
+}
+
+const relatedQuestions = await db
+  .select()
+  .from(questions)
+  .where(eq(questions.conversionId, id));
+
+const statusColors: Record<string, string> = {
+  pending: "bg-gray-100 text-gray-800",
+  analyzing: "bg-blue-100 text-blue-800",
+  converting: "bg-blue-100 text-blue-800",
+  pushing: "bg-blue-100 text-blue-800",
+  deploying: "bg-blue-100 text-blue-800",
+  done: "bg-green-100 text-green-800",
+  error: "bg-red-100 text-red-800",
+  waiting_answers: "bg-orange-100 text-orange-800",
+};
+---
+
+<Dashboard title={`Conversion ${conversion.commitSha.slice(0, 7)}`}>
+  <div class="space-y-6">
+    <div class="flex items-center gap-4">
+      <a href="/" class="text-sm text-gray-500 hover:text-gray-700">&larr; Retour</a>
+      <h1 class="text-2xl font-bold text-gray-900">
+        Conversion <code class="font-mono">{conversion.commitSha.slice(0, 7)}</code>
+      </h1>
+      <span class={`px-2 py-1 text-xs rounded-full font-medium ${statusColors[conversion.status] ?? "bg-gray-100 text-gray-800"}`}>
+        {conversion.status}
+      </span>
+    </div>
+
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+      <dl class="grid grid-cols-2 gap-x-8 gap-y-4">
+        <div>
+          <dt class="text-sm font-medium text-gray-500">Commit SHA</dt>
+          <dd class="mt-1 text-sm font-mono text-gray-900">{conversion.commitSha}</dd>
+        </div>
+        <div>
+          <dt class="text-sm font-medium text-gray-500">Branche</dt>
+          <dd class="mt-1 text-sm text-gray-900">{conversion.branch}</dd>
+        </div>
+        <div>
+          <dt class="text-sm font-medium text-gray-500">Message</dt>
+          <dd class="mt-1 text-sm text-gray-900">{conversion.commitMessage ?? "—"}</dd>
+        </div>
+        <div>
+          <dt class="text-sm font-medium text-gray-500">Démarré le</dt>
+          <dd class="mt-1 text-sm text-gray-900">{conversion.startedAt}</dd>
+        </div>
+        {conversion.finishedAt && (
+          <div>
+            <dt class="text-sm font-medium text-gray-500">Terminé le</dt>
+            <dd class="mt-1 text-sm text-gray-900">{conversion.finishedAt}</dd>
+          </div>
+        )}
+        {conversion.errorMessage && (
+          <div class="col-span-2">
+            <dt class="text-sm font-medium text-red-600">Erreur</dt>
+            <dd class="mt-1 text-sm text-red-800 bg-red-50 p-3 rounded font-mono whitespace-pre-wrap">
+              {conversion.errorMessage}
+            </dd>
+          </div>
+        )}
+      </dl>
+    </div>
+
+    {relatedQuestions.length > 0 && (
+      <div class="bg-white rounded-lg border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-lg font-medium text-gray-900">
+            Questions ({relatedQuestions.length})
+          </h2>
+        </div>
+        <div class="divide-y divide-gray-200">
+          {relatedQuestions.map((q) => (
+            <div class="px-6 py-4 space-y-1">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-sm text-gray-900">{q.componentPath}</span>
+                {q.answer ? (
+                  <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 font-medium">
+                    {q.answer}
+                  </span>
+                ) : (
+                  <span class="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800 font-medium">
+                    En attente
+                  </span>
+                )}
+              </div>
+              <p class="text-sm text-gray-600">{q.questionText}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+</Dashboard>
