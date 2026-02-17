@@ -157,6 +157,12 @@ export async function runConversion(conversionId: number): Promise<void> {
       log(`  ${relative(sourceDir, routeFile)} → ${routes.length} route(s): ${routes.map((r) => r.astroPagePath).join(", ")}`);
 
       for (const route of routes) {
+        // Sauter les routes dynamiques — le build statique nécessite getStaticPaths()
+        if (route.path.includes(":") || route.path.includes("*")) {
+          log(`  → skip route dynamique: ${route.path} (${route.astroPagePath})`);
+          continue;
+        }
+
         const analysis = analyses.find((a) => a.filePath.includes(route.componentName));
         const rule: ConversionRule = (await findRule(route.componentImport, conversion0?.projectId ?? undefined)) ?? {
           componentPath: route.componentImport,

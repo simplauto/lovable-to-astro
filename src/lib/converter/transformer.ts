@@ -53,58 +53,18 @@ export function generateAstroPage(
   const importPath = computeImportPath(astroPageRelPath, componentPath);
   const layoutPath = computeLayoutPath(astroPageRelPath);
 
-  switch (rule.mode) {
-    case "static":
-      return `---
+  // Les composants Lovable sont conçus pour le client (window, document, etc.)
+  // → on utilise toujours client:only="react" pour éviter les erreurs SSR au build
+  // Le mode choisi sera pertinent quand les composants seront réécrits pour Astro
+  return `---
 import Layout from "${layoutPath}";
 import ${componentName} from "${importPath}";
 ---
 
 <Layout title="${componentName}">
-  <${componentName} />
+  <${componentName} client:only="react" />
 </Layout>
 `;
-
-    case "static-data":
-      return `---
-import Layout from "${layoutPath}";
-import ${componentName} from "${importPath}";
-
-// TODO: Remplacer par l'URL de votre API
-const response = await fetch("https://api.example.com/data");
-const data = await response.json();
----
-
-<Layout title="${componentName}">
-  <${componentName} data={data} />
-</Layout>
-`;
-
-    case "ssr":
-      return `---
-// Mode: SSR — En production, ajouter @astrojs/node et output: "server"
-import Layout from "${layoutPath}";
-import ${componentName} from "${importPath}";
----
-
-<Layout title="${componentName}">
-  <${componentName} />
-</Layout>
-`;
-
-    case "island": {
-      const directive = rule.hydrationDirective ?? "client:load";
-      return `---
-import Layout from "${layoutPath}";
-import ${componentName} from "${importPath}";
----
-
-<Layout title="${componentName}">
-  <${componentName} ${directive} />
-</Layout>
-`;
-    }
-  }
 }
 
 /**
