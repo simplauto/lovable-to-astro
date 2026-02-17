@@ -54,15 +54,20 @@ export function generateAstroPage(
   const layoutPath = computeLayoutPath(astroPageRelPath);
 
   // Les composants Lovable sont conçus pour le client (window, document, etc.)
-  // → on utilise toujours client:only="react" pour éviter les erreurs SSR au build
-  // Le mode choisi sera pertinent quand les composants seront réécrits pour Astro
+  // → client:only="react" pour éviter les erreurs SSR au build
+  // AppWrapper fournit BrowserRouter (les composants utilisent react-router-dom)
+  const wrapperPath = `${upFromPages(astroPageRelPath)}components/AppWrapper`;
+
   return `---
 import Layout from "${layoutPath}";
+import AppWrapper from "${wrapperPath}";
 import ${componentName} from "${importPath}";
 ---
 
 <Layout title="${componentName}">
-  <${componentName} client:only="react" />
+  <AppWrapper client:only="react">
+    <${componentName} />
+  </AppWrapper>
 </Layout>
 `;
 }

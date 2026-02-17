@@ -121,6 +121,8 @@ export default defineConfig({
   writeOutput(
     join(outputDir, "src/layouts/Layout.astro"),
     `---
+import "../styles/global.css";
+
 interface Props {
   title?: string;
 }
@@ -133,13 +135,23 @@ const { title = "Simplauto" } = Astro.props;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="/src/styles/global.css" />
     <title>{title}</title>
   </head>
   <body>
     <slot />
   </body>
 </html>
+`,
+  );
+
+  // Wrapper React avec BrowserRouter (les composants Lovable utilisent react-router-dom)
+  writeOutput(
+    join(outputDir, "src/components/AppWrapper.tsx"),
+    `import { BrowserRouter } from "react-router-dom";
+
+export default function AppWrapper({ children }: { children: React.ReactNode }) {
+  return <BrowserRouter>{children}</BrowserRouter>;
+}
 `,
   );
 
