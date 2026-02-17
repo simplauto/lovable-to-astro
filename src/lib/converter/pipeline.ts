@@ -1,6 +1,6 @@
 import { mkdtemp, readdir, readFile, rm, cp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative, extname } from "node:path";
+import { join, relative, extname, basename } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -12,7 +12,7 @@ import { cloneSourceRepo } from "../github/client";
 import { analyzeComponent } from "./analyzer";
 import { findRule, needsQuestion } from "../rules/engine";
 import { suggestHydrationDirective } from "./islands";
-import { generateAstroPage, writeOutput } from "./transformer";
+import { generateAstroPage, generatePageWrapper, writeOutput } from "./transformer";
 import { extractRoutes } from "./router";
 import { generateScaffold } from "./scaffold";
 import type { ComponentAnalysis, ConversionRule, ConversionStatus } from "../../types";
@@ -31,6 +31,24 @@ async function updateStatus(id: number, status: ConversionStatus, errorMessage?:
       ...(status === "done" || status === "error" ? { finishedAt: new Date().toISOString() } : {}),
     })
     .where(eq(conversions.id, id));
+}
+
+/** Liste récursivement tous les fichiers d'un répertoire (chemins relatifs). */
+async function collectFilesRecursive(dir: string, base?: string): Promise<string[]> {
+  const root = base ?? dir;
+  const files: string[] = [];
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory() && entry.name !== "node_modules") {
+        files.push(...(await collectFilesRecursive(fullPath, root)));
+      } else if (entry.isFile()) {
+        files.push(relative(root, fullPath));
+      }
+    }
+  } catch { /* ignore */ }
+  return files;
 }
 
 /**
@@ -176,8 +194,13 @@ export async function runConversion(conversionId: number): Promise<void> {
           rule,
           route.astroPagePath,
         );
-
         writeOutput(astroPagePath, astroContent);
+
+        // Générer le wrapper React (BrowserRouter + composant) dans src/components/
+        const componentName = basename(route.componentImport).replace(extname(route.componentImport), "");
+        const wrapperName = componentName.charAt(0).toUpperCase() + componentName.slice(1);
+        const wrapperPath = join(outputDir, "src", "components", `${wrapperName}Page.tsx`);
+        writeOutput(wrapperPath, generatePageWrapper(wrapperName));
       }
     }
     log("Conversion terminée.");
@@ -206,6 +229,24 @@ export async function runConversion(conversionId: number): Promise<void> {
         log("astro build (timeout 2min)...");
         const buildResult = await exec(astroBin, ["build"], execOpts);
         log("astro build OK.");
+
+        // Diagnostic : lister le contenu de dist/ pour vérifier le build statique
+        const distDir = join(destDir, "dist");
+        try {
+          const distFiles = await collectFilesRecursive(distDir);
+          const htmlFiles = distFiles.filter(f => f.endsWith(".html"));
+          log(`dist/ : ${distFiles.length} fichiers, ${htmlFiles.length} HTML`);
+          if (htmlFiles.length === 0) {
+            log(`⚠ Aucun HTML dans dist/ ! Fichiers : ${distFiles.slice(0, 20).join(", ")}`);
+            // Log du astro.config.mjs pour debug
+            try {
+              const configContent = await readFile(join(destDir, "astro.config.mjs"), "utf-8");
+              log(`astro.config.mjs : ${configContent.replace(/\n/g, " ").slice(0, 200)}`);
+            } catch { /* ignore */ }
+          } else {
+            log(`HTML générés : ${htmlFiles.join(", ")}`);
+          }
+        } catch { log("Impossible de lister dist/"); }
 
         const buildLog = [
           "=== npm install ===",

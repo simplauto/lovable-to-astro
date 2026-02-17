@@ -144,17 +144,6 @@ const { title = "Simplauto" } = Astro.props;
 `,
   );
 
-  // Wrapper React avec BrowserRouter (les composants Lovable utilisent react-router-dom)
-  writeOutput(
-    join(outputDir, "src/components/AppWrapper.tsx"),
-    `import { BrowserRouter } from "react-router-dom";
-
-export default function AppWrapper({ children }: { children: React.ReactNode }) {
-  return <BrowserRouter>{children}</BrowserRouter>;
-}
-`,
-  );
-
   // Copier les composants React du projet source vers src/components/
   const srcComponents = join(sourceDir, "src", "components");
   const outComponents = join(outputDir, "src", "components");

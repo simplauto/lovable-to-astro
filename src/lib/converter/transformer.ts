@@ -38,6 +38,25 @@ function computeLayoutPath(astroPageRelPath: string): string {
 }
 
 /**
+ * Génère le wrapper React pour une page (BrowserRouter + composant).
+ * Un seul composant client:only dans le template Astro évite les problèmes
+ * de slot SSR — Astro n'essaie pas de server-render les enfants.
+ */
+export function generatePageWrapper(componentName: string): string {
+  return `import { BrowserRouter } from "react-router-dom";
+import ${componentName} from "./${componentName}";
+
+export default function ${componentName}Page() {
+  return (
+    <BrowserRouter>
+      <${componentName} />
+    </BrowserRouter>
+  );
+}
+`;
+}
+
+/**
  * Génère un fichier .astro page à partir d'un composant React page.
  *
  * @param componentPath — chemin du composant React source (ex: "src/pages/Dashboard.tsx")
@@ -50,24 +69,19 @@ export function generateAstroPage(
   astroPageRelPath: string,
 ): string {
   const componentName = componentNameFromPath(componentPath);
-  const importPath = computeImportPath(astroPageRelPath, componentPath);
   const layoutPath = computeLayoutPath(astroPageRelPath);
 
-  // Les composants Lovable sont conçus pour le client (window, document, etc.)
-  // → client:only="react" pour éviter les erreurs SSR au build
-  // AppWrapper fournit BrowserRouter (les composants utilisent react-router-dom)
-  const wrapperPath = `${upFromPages(astroPageRelPath)}components/AppWrapper`;
+  // Le wrapper React (BrowserRouter + composant) est un seul client:only island.
+  // Pas de composant React enfant dans le template Astro → pas de problème SSR.
+  const wrapperPath = `${upFromPages(astroPageRelPath)}components/${componentName}Page`;
 
   return `---
 import Layout from "${layoutPath}";
-import AppWrapper from "${wrapperPath}";
-import ${componentName} from "${importPath}";
+import ${componentName}Page from "${wrapperPath}";
 ---
 
 <Layout title="${componentName}">
-  <AppWrapper client:only="react">
-    <${componentName} />
-  </AppWrapper>
+  <${componentName}Page client:only="react" />
 </Layout>
 `;
 }
