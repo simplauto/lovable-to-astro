@@ -172,7 +172,7 @@ const { title = "Simplauto" } = Astro.props;
   }
 
   // Copier les sous-dossiers source courants (lib, hooks, contexts, utils, etc.)
-  for (const subDir of ["lib", "hooks", "contexts", "integrations", "utils", "services", "types", "data", "config"]) {
+  for (const subDir of ["lib", "hooks", "contexts", "integrations", "utils", "services", "types", "data", "config", "assets"]) {
     const srcSub = join(sourceDir, "src", subDir);
     if (existsSync(srcSub)) {
       cpSync(srcSub, join(outputDir, "src", subDir), { recursive: true });
