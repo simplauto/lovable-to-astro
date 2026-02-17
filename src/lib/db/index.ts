@@ -79,4 +79,14 @@ try {
   sqlite.exec(`ALTER TABLE rules ADD COLUMN project_id INTEGER REFERENCES projects(id)`);
 } catch (_) { /* column already exists */ }
 
+// Au démarrage : marquer comme erreur les conversions restées en cours
+// (crash, redéploiement, timeout non attrapé, etc.)
+sqlite.exec(`
+  UPDATE conversions
+  SET status = 'error',
+      error_message = 'Interrompu par un redémarrage du serveur',
+      finished_at = datetime('now')
+  WHERE status IN ('pending', 'analyzing', 'converting', 'pushing', 'deploying')
+`);
+
 export const db = drizzle(sqlite, { schema });

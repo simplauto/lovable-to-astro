@@ -58,9 +58,12 @@ async function collectReactFiles(dir: string): Promise<string[]> {
 export async function runConversion(conversionId: number): Promise<void> {
   const sourceDir = await mkdtemp(join(tmpdir(), "lovable-src-"));
   const outputDir = await mkdtemp(join(tmpdir(), "astro-out-"));
+  const t0 = Date.now();
+  const log = (msg: string) => console.log(`[conv:${conversionId}] ${msg} (+${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 
   try {
-    // 0. Charger le projet associé (si la conversion a un projectId)
+    // 0. Charger le projet associé
+    log("Chargement du projet...");
     const [conversion0] = await db
       .select()
       .from(conversions)
@@ -78,12 +81,15 @@ export async function runConversion(conversionId: number): Promise<void> {
     }
 
     // 1. Clone
+    log(`Clone du repo ${sourceRepo ?? "(aucun)"}...`);
     await updateStatus(conversionId, "analyzing");
     await cloneSourceRepo(sourceDir, sourceRepo);
+    log("Clone terminé.");
 
     // 2. Analyse des composants
     const srcDir = join(sourceDir, "src");
     const reactFiles = await collectReactFiles(srcDir);
+    log(`${reactFiles.length} fichiers React trouvés.`);
     const analyses: ComponentAnalysis[] = [];
     const pendingQuestions: { componentPath: string; analysis: ComponentAnalysis }[] = [];
 
@@ -93,16 +99,17 @@ export async function runConversion(conversionId: number): Promise<void> {
       const analysis = analyzeComponent(relativePath, source);
       analyses.push(analysis);
 
-      // Vérifier s'il y a une règle existante
       const existingRule = await findRule(relativePath, conversion0?.projectId ?? undefined);
       if (!existingRule && needsQuestion(analysis)) {
         pendingQuestions.push({ componentPath: relativePath, analysis });
       }
     }
+    log(`Analyse terminée : ${analyses.length} composants, ${pendingQuestions.length} questions.`);
 
     // 3. S'il y a des questions, les créer et mettre en pause
     if (pendingQuestions.length > 0) {
       await updateStatus(conversionId, "waiting_answers");
+      log("Questions en attente, conversion en pause.");
 
       for (const { componentPath, analysis } of pendingQuestions) {
         const suggested = suggestHydrationDirective(analysis);
@@ -131,24 +138,23 @@ export async function runConversion(conversionId: number): Promise<void> {
         });
       }
 
-      // La conversion reprendra quand toutes les questions auront été répondues
       return;
     }
 
     // 4. Conversion
     await updateStatus(conversionId, "converting");
-
-    // Générer le scaffold du projet Astro (config, layout, copie des assets et composants)
+    log("Génération du scaffold Astro...");
     generateScaffold(outputDir, sourceDir);
 
-    // Chercher le fichier de routing
     const routingFiles = reactFiles.filter(
       (f) => f.includes("App.tsx") || f.includes("router") || f.includes("routes"),
     );
+    log(`${routingFiles.length} fichier(s) de routing détecté(s).`);
 
     for (const routeFile of routingFiles) {
       const source = await readFile(routeFile, "utf-8");
       const routes = extractRoutes(source);
+      log(`  ${relative(sourceDir, routeFile)} → ${routes.length} route(s): ${routes.map((r) => r.astroPagePath).join(", ")}`);
 
       for (const route of routes) {
         const analysis = analyses.find((a) => a.filePath.includes(route.componentName));
@@ -168,27 +174,34 @@ export async function runConversion(conversionId: number): Promise<void> {
         writeOutput(astroPagePath, astroContent);
       }
     }
+    log("Conversion terminée.");
 
     // 5. Copier les fichiers générés vers le répertoire persistant du projet
     await updateStatus(conversionId, "pushing");
+    log("Copie des fichiers vers le répertoire persistant...");
 
     if (conversion0?.projectId) {
       const destDir = projectOutputDir(conversion0.projectId);
-      // Supprimer l'ancienne sortie si elle existe
       await rm(destDir, { recursive: true, force: true }).catch(() => {});
       await mkdir(destDir, { recursive: true });
       await cp(outputDir, destDir, { recursive: true });
+      log("Copie terminée.");
 
       // 6. Build du projet Astro pour preview
       await updateStatus(conversionId, "deploying");
       const buildLogPath = join(destDir, "build.log");
-      const execOpts = { cwd: destDir, timeout: 300_000, maxBuffer: 10 * 1024 * 1024 };
+      const execOpts = { cwd: destDir, timeout: 120_000, maxBuffer: 10 * 1024 * 1024 };
       try {
+        log("npm install (timeout 2min)...");
         const installResult = await exec("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--legacy-peer-deps"], execOpts);
-        // Utiliser le binaire local au lieu de npx (évite un téléchargement)
+        log("npm install OK.");
+
         const astroBin = join(destDir, "node_modules", ".bin", "astro");
+        log("astro build (timeout 2min)...");
         const buildResult = await exec(astroBin, ["build"], execOpts);
-        const log = [
+        log("astro build OK.");
+
+        const buildLog = [
           "=== npm install ===",
           installResult.stdout,
           installResult.stderr,
@@ -197,10 +210,9 @@ export async function runConversion(conversionId: number): Promise<void> {
           buildResult.stderr,
           "=== BUILD OK ===",
         ].filter(Boolean).join("\n");
-        await writeFile(buildLogPath, log, "utf-8");
+        await writeFile(buildLogPath, buildLog, "utf-8");
       } catch (buildErr: any) {
-        // Le build preview peut échouer (deps manquantes, etc.)
-        // On continue quand même — les fichiers source restent consultables
+        log(`Build preview échoué : ${buildErr.message || buildErr}`);
         const errorLog = [
           "=== BUILD FAILED ===",
           buildErr.stdout || "",
@@ -208,18 +220,19 @@ export async function runConversion(conversionId: number): Promise<void> {
           buildErr.message || String(buildErr),
         ].filter(Boolean).join("\n");
         await writeFile(buildLogPath, errorLog, "utf-8");
-        console.error("Preview build failed (non-fatal):", buildErr.message || buildErr);
       }
     }
 
     await updateStatus(conversionId, "done");
+    log("Conversion terminée avec succès !");
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    log(`ERREUR : ${message}`);
     await updateStatus(conversionId, "error", message);
     throw err;
   } finally {
-    // Nettoyage des répertoires temporaires
     await rm(sourceDir, { recursive: true, force: true }).catch(() => {});
     await rm(outputDir, { recursive: true, force: true }).catch(() => {});
+    log("Nettoyage terminé.");
   }
 }
