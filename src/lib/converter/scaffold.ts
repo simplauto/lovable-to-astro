@@ -4,8 +4,8 @@ import { cpSync, existsSync, readFileSync } from "node:fs";
 
 /** Dépendances à exclure du projet source (remplacées par Astro). */
 const EXCLUDED_DEPS = [
-  "react-scripts", "vite", "@vitejs/plugin-react", "react-router-dom",
-  "react-router", "@types/node", "eslint", "prettier", "postcss",
+  "react-scripts", "vite", "@vitejs/plugin-react",
+  "@types/node", "eslint", "prettier", "postcss",
   "autoprefixer", "tailwindcss", // remplacé par la version Astro
   "next-themes", "next", "next-auth", // packages Next.js incompatibles Astro
 ];
