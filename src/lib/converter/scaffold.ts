@@ -150,6 +150,14 @@ const { title = "Simplauto" } = Astro.props;
     cpSync(srcComponents, outComponents, { recursive: true });
   }
 
+  // Copier les composants page (src/pages/ → src/components/ dans la sortie)
+  // Chez Lovable, les composants page vivent dans src/pages/ (Index.tsx, About.tsx...)
+  // Côté Astro, src/pages/ est réservé aux fichiers .astro, donc on les met dans src/components/
+  const srcPages = join(sourceDir, "src", "pages");
+  if (existsSync(srcPages)) {
+    cpSync(srcPages, outComponents, { recursive: true });
+  }
+
   // Copier les assets (images, fonts, etc.)
   const srcPublic = join(sourceDir, "public");
   const outPublic = join(outputDir, "public");
@@ -163,21 +171,11 @@ const { title = "Simplauto" } = Astro.props;
     cpSync(srcStyles, join(outputDir, "src", "styles"), { recursive: true });
   }
 
-  // Copier lib/ (hooks, utils, api clients, etc.)
-  const srcLib = join(sourceDir, "src", "lib");
-  if (existsSync(srcLib)) {
-    cpSync(srcLib, join(outputDir, "src", "lib"), { recursive: true });
-  }
-
-  // Copier hooks/
-  const srcHooks = join(sourceDir, "src", "hooks");
-  if (existsSync(srcHooks)) {
-    cpSync(srcHooks, join(outputDir, "src", "hooks"), { recursive: true });
-  }
-
-  // Copier contexts/
-  const srcContexts = join(sourceDir, "src", "contexts");
-  if (existsSync(srcContexts)) {
-    cpSync(srcContexts, join(outputDir, "src", "contexts"), { recursive: true });
+  // Copier les sous-dossiers source courants (lib, hooks, contexts, utils, etc.)
+  for (const subDir of ["lib", "hooks", "contexts", "integrations", "utils", "services", "types", "data", "config"]) {
+    const srcSub = join(sourceDir, "src", subDir);
+    if (existsSync(srcSub)) {
+      cpSync(srcSub, join(outputDir, "src", subDir), { recursive: true });
+    }
   }
 }
