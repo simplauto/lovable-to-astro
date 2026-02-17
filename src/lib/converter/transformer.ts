@@ -19,15 +19,22 @@ function componentNameFromPath(filePath: string): string {
  * du projet Astro de sortie. Depuis src/pages/foo.astro, l'import est ../components/Foo.
  * Depuis src/pages/sub/bar.astro, l'import est ../../components/Bar.
  */
+/**
+ * Calcule le préfixe de remontée "../" depuis une page Astro vers src/.
+ * Ex: "index.astro" → "../", "sub/bar.astro" → "../../"
+ */
+function upFromPages(astroPageRelPath: string): string {
+  const depth = astroPageRelPath.split("/").length - 1;
+  return "../".repeat(depth + 1); // +1 pour remonter de pages/ vers src/
+}
+
 function computeImportPath(astroPageRelPath: string, componentSourcePath: string): string {
   const componentName = basename(componentSourcePath).replace(extname(componentSourcePath), "");
+  return `${upFromPages(astroPageRelPath)}components/${componentName}`;
+}
 
-  // Compter le nombre de niveaux sous src/pages/
-  // astroPageRelPath est quelque chose comme "index.astro" ou "sub/bar.astro"
-  const depth = astroPageRelPath.split("/").length - 1;
-  const upLevels = "../".repeat(depth + 1); // +1 pour remonter de pages/ vers src/
-
-  return `${upLevels}components/${componentName}`;
+function computeLayoutPath(astroPageRelPath: string): string {
+  return `${upFromPages(astroPageRelPath)}layouts/Layout.astro`;
 }
 
 /**
@@ -44,12 +51,12 @@ export function generateAstroPage(
 ): string {
   const componentName = componentNameFromPath(componentPath);
   const importPath = computeImportPath(astroPageRelPath, componentPath);
+  const layoutPath = computeLayoutPath(astroPageRelPath);
 
   switch (rule.mode) {
     case "static":
-      // HTML pur généré au build, aucun JS côté client
       return `---
-import Layout from "../layouts/Layout.astro";
+import Layout from "${layoutPath}";
 import ${componentName} from "${importPath}";
 ---
 
@@ -59,9 +66,8 @@ import ${componentName} from "${importPath}";
 `;
 
     case "static-data":
-      // Statique avec données récupérées au build (fetch dans le frontmatter)
       return `---
-import Layout from "../layouts/Layout.astro";
+import Layout from "${layoutPath}";
 import ${componentName} from "${importPath}";
 
 // TODO: Remplacer par l'URL de votre API
@@ -75,12 +81,9 @@ const data = await response.json();
 `;
 
     case "ssr":
-      // Rendu serveur à chaque requête, zéro JS client
-      // Note : pour activer le SSR en production, passer output: "server" dans astro.config
-      // et ajouter export const prerender = false; dans le frontmatter
       return `---
 // Mode: SSR — En production, ajouter @astrojs/node et output: "server"
-import Layout from "../layouts/Layout.astro";
+import Layout from "${layoutPath}";
 import ${componentName} from "${importPath}";
 ---
 
@@ -90,10 +93,9 @@ import ${componentName} from "${importPath}";
 `;
 
     case "island": {
-      // Composant en îlot React avec directive d'hydratation
       const directive = rule.hydrationDirective ?? "client:load";
       return `---
-import Layout from "../layouts/Layout.astro";
+import Layout from "${layoutPath}";
 import ${componentName} from "${importPath}";
 ---
 
