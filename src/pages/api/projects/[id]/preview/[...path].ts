@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { readFile, stat, readdir } from "node:fs/promises";
-import { join, extname, relative } from "node:path";
+import { join, extname, relative, basename } from "node:path";
 import { existsSync } from "node:fs";
 import { projectOutputDir } from "../../../../../lib/converter/pipeline";
 
@@ -85,7 +85,7 @@ export const GET: APIRoute = async ({ params }) => {
 
   console.log(`[preview] projectId=${projectId} filePath="${filePath}" distDir="${distDir}" exists=${existsSync(distDir)}`);
 
-  // Essayer le chemin tel quel, puis avec /index.html
+  // Résolution du fichier : chemin direct, puis /index.html, puis .html, puis fallback _astro/
   let fullPath = join(distDir, filePath);
   try {
     const s = await stat(fullPath);
@@ -94,7 +94,19 @@ export const GET: APIRoute = async ({ params }) => {
     }
   } catch {
     if (!extname(filePath)) {
-      fullPath = join(distDir, filePath + ".html");
+      // Essayer avec .html (ex: /about → about.html)
+      const withHtml = join(distDir, filePath + ".html");
+      if (existsSync(withHtml)) {
+        fullPath = withHtml;
+      }
+    }
+    // Fallback : chercher le fichier dans _astro/ (certains imports utilisent des chemins relatifs)
+    if (!existsSync(fullPath)) {
+      const inAstro = join(distDir, "_astro", basename(filePath));
+      if (existsSync(inAstro)) {
+        console.log(`[preview] fallback _astro/ : ${filePath} → ${inAstro}`);
+        fullPath = inAstro;
+      }
     }
   }
 
@@ -108,17 +120,29 @@ export const GET: APIRoute = async ({ params }) => {
     if (isText) {
       let content = await readFile(fullPath, "utf-8");
 
-      // Réécrire TOUTES les références à des chemins absolus (/, /_astro/, /src/, etc.)
-      // pour passer par notre endpoint de preview
+      // Réécrire TOUTES les références à des chemins absolus pour passer par le proxy preview.
+      // Stratégie : remplacer toute occurrence de "/ ou '/ (chemin absolu) dans les fichiers texte.
       if (ext === ".html") {
-        // Couvre : href="/...", src="/...", import("/..."), fetch("/..."), url("/...")
+        // 1) Chemins /_astro/ (les plus courants — attributs, imports, etc.)
         content = content.replaceAll('"/_astro/', `"${basePath}/_astro/`);
         content = content.replaceAll("'/_astro/", `'${basePath}/_astro/`);
-        content = content.replace(/(href|src|action)="\/(?!\/)/g, `$1="${basePath}/`);
+        // 2) Attributs HTML classiques avec chemins absolus
+        content = content.replace(/(href|src|action|component-url|renderer-url)="\/(?!\/)/g, `$1="${basePath}/`);
+        // 3) url() dans les styles inline
+        content = content.replace(/url\(\s*["']?\/(?!\/)/g, `url(${basePath}/`);
       }
 
-      // Pour les fichiers JS, réécrire les imports dynamiques vers /_astro/
       if (ext === ".js" || ext === ".mjs") {
+        // Réécrire les chemins /_astro/ dans le code JS (imports dynamiques, fetch, etc.)
+        content = content.replaceAll('"/_astro/', `"${basePath}/_astro/`);
+        content = content.replaceAll("'/_astro/", `'${basePath}/_astro/`);
+        // Réécrire aussi les chemins absolus génériques dans le JS
+        content = content.replace(/(["`'])\/(?!\/|api\/)/g, `$1${basePath}/`);
+      }
+
+      if (ext === ".css") {
+        // Réécrire url() dans les feuilles de style
+        content = content.replace(/url\(\s*["']?\/(?!\/)/g, `url(${basePath}/`);
         content = content.replaceAll('"/_astro/', `"${basePath}/_astro/`);
         content = content.replaceAll("'/_astro/", `'${basePath}/_astro/`);
       }
