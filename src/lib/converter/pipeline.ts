@@ -184,7 +184,7 @@ export async function runConversion(conversionId: number): Promise<void> {
       const buildLogPath = join(destDir, "build.log");
       const execOpts = { cwd: destDir, timeout: 300_000, maxBuffer: 10 * 1024 * 1024 };
       try {
-        const installResult = await exec("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], execOpts);
+        const installResult = await exec("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--legacy-peer-deps"], execOpts);
         // Utiliser le binaire local au lieu de npx (évite un téléchargement)
         const astroBin = join(destDir, "node_modules", ".bin", "astro");
         const buildResult = await exec(astroBin, ["build"], execOpts);
