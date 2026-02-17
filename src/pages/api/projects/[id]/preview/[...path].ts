@@ -108,8 +108,19 @@ export const GET: APIRoute = async ({ params }) => {
     if (isText) {
       let content = await readFile(fullPath, "utf-8");
 
+      // Réécrire TOUTES les références à des chemins absolus (/, /_astro/, /src/, etc.)
+      // pour passer par notre endpoint de preview
       if (ext === ".html") {
-        content = content.replace(/(href|src)="\/(?!\/)/g, `$1="${basePath}/`);
+        // Couvre : href="/...", src="/...", import("/..."), fetch("/..."), url("/...")
+        content = content.replaceAll('"/_astro/', `"${basePath}/_astro/`);
+        content = content.replaceAll("'/_astro/", `'${basePath}/_astro/`);
+        content = content.replace(/(href|src|action)="\/(?!\/)/g, `$1="${basePath}/`);
+      }
+
+      // Pour les fichiers JS, réécrire les imports dynamiques vers /_astro/
+      if (ext === ".js" || ext === ".mjs") {
+        content = content.replaceAll('"/_astro/', `"${basePath}/_astro/`);
+        content = content.replaceAll("'/_astro/", `'${basePath}/_astro/`);
       }
 
       return new Response(content, {
